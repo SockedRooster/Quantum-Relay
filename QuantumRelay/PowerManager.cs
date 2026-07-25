@@ -12,7 +12,12 @@ namespace QuantumRelay
     {
         public static bool Consume(GatewayCandidate gateway, double amount)
         {
-            if (gateway?.Vessel == null || amount <= 0.0) return false;
+            if (gateway?.Vessel == null) return false;
+
+            // A configured draw of 0 EC/s disables the power requirement.
+            // Do not call RequestResource with a zero amount or interpret the
+            // resulting zero draw as a power failure.
+            if (amount <= 0.0) return true;
             if (gateway.ElectricChargeAmount + 1e-6 < amount) return false;
 
             if (gateway.Vessel.loaded)

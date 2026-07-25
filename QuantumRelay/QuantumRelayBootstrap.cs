@@ -26,10 +26,11 @@ namespace QuantumRelay
 
         public void Start()
         {
+            QuantumRelaySettings.Load();
             _lastMaintenanceUt = Planetarium.GetUniversalTime();
             RegisterEvents();
             CommNetNetworkInstaller.EnsureInstalled();
-            Debug.Log("[QuantumRelay] Quantum Relay v1 loaded | Developer: SockedRooster | Company: RoosterWorks | License: MIT");
+            Debug.Log("[QuantumRelay] Quantum Relay " + QuantumRelayConstants.DisplayVersion + " loaded | Developer: SockedRooster | Company: RoosterWorks | License: MIT");
             Debug.Log("[QuantumRelay] v1 creates the wormhole edge inside the stock CommNet graph rebuild; routing and signal handling remain stock.");
         }
 
@@ -48,6 +49,20 @@ namespace QuantumRelay
             CommNetNetworkInstaller.EnsureInstalled();
 
             float realtime = Time.realtimeSinceStartup;
+
+            if (QuantumRelayCommands.ConsumeRefresh())
+            {
+                _cacheDirty = true;
+                _dirtyAfterTime = realtime;
+                QuantumRelayRuntimeState.SetTicker("Gateway scan requested.");
+            }
+
+            if (QuantumRelayCommands.ConsumeRebuild())
+            {
+                QuantumGatewayManager.QueueRebuildNow();
+                QuantumRelayRuntimeState.SetTicker("CommNet rebuild requested.");
+            }
+
             bool periodicScanDue = realtime >= _nextFullScanTime;
             bool dirtyScanDue = _cacheDirty && realtime >= _dirtyAfterTime;
 
@@ -169,20 +184,21 @@ namespace QuantumRelay
 
         private void SetOnline(GatewayCandidate a, GatewayCandidate b, bool online, string reason)
         {
+            QuantumRelayRuntimeState.Publish(a, b, online, reason);
             QuantumGatewayManager.SetActive(a, b, online);
             if (online == _lastOnline) return;
             _lastOnline = online;
-            Debug.Log("[QuantumRelay] LINK " + (online ? "ONLINE" : "OFFLINE") + " | reason=" + reason);
-            ScreenMessages.PostScreenMessage(online ? "QUANTUM RELAY LINK ONLINE" : "Quantum Relay link offline: " + reason, 5f, ScreenMessageStyle.UPPER_CENTER);
+            string text = online ? "QUANTUM RELAY LINK ONLINE" : "Quantum Relay link offline: " + reason;
+            QuantumRelayNotifications.Post(online ? "link-online" : "link-offline-" + reason, text, true);
         }
 
         private static void LogCandidate(GatewayCandidate c)
         {
             Debug.Log(string.Format(
-                "[QuantumRelay] Gateway scan | vessel={0} | near={1} | distance={2:N1} km | loaded={3} | reflector={4} | deployed={5} | reflectorEvidence={6} | commNet={7} | commNetEvidence={8} | probe={9} | EC={10:N2}/{11:N2} | VALID={12}",
-                c.Vessel.vesselName, c.Wormhole.Name, c.DistanceMetres / 1000.0, c.IsLoaded, c.HasReflector,
-                c.ReflectorDeployed, c.ReflectorEvidence, c.HasCommNet, c.CommNetEvidence, c.HasProbeControl,
-                c.ElectricChargeAmount, c.ElectricChargeCapacity, c.IsValid));
+                "[QuantumRelay] Gateway scan | vessel={0} | near={1} | distance={2:N1} km | loaded={3} | quantumModule={4} | relayHardware={5} | ready={6} | hardwareEvidence={7} | commNet={8} | commNetEvidence={9} | probe={10} | EC={11:N2}/{12:N2} | VALID={13}",
+                c.Vessel.vesselName, c.Wormhole.Name, c.DistanceMetres / 1000.0, c.IsLoaded, c.HasQuantumRelayModule,
+                c.HasRelayHardware, c.RelayHardwareReady, c.RelayHardwareEvidence ?? c.ReflectorEvidence, c.HasCommNet,
+                c.CommNetEvidence, c.HasProbeControl, c.ElectricChargeAmount, c.ElectricChargeCapacity, c.IsValid));
         }
     }
 }

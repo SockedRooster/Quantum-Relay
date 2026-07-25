@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "D:\\Downloads\\QuantumRelay-v1.0.1-foundation-source\\QuantumRelay_v1_RoosterWorks\\Source\\QuantumRelay\\QuantumRelay.csproj": {}
+    "C:\\Users\\rida6\\Projects\\QuantumRelay\\Quantum-Relay\\QuantumRelay\\QuantumRelay.csproj": {}
   },
   "projects": {
-    "D:\\Downloads\\QuantumRelay-v1.0.1-foundation-source\\QuantumRelay_v1_RoosterWorks\\Source\\QuantumRelay\\QuantumRelay.csproj": {
-      "version": "1.0.1",
+    "C:\\Users\\rida6\\Projects\\QuantumRelay\\Quantum-Relay\\QuantumRelay\\QuantumRelay.csproj": {
+      "version": "1.2.0-alpha2",
       "restore": {
-        "projectUniqueName": "D:\\Downloads\\QuantumRelay-v1.0.1-foundation-source\\QuantumRelay_v1_RoosterWorks\\Source\\QuantumRelay\\QuantumRelay.csproj",
+        "projectUniqueName": "C:\\Users\\rida6\\Projects\\QuantumRelay\\Quantum-Relay\\QuantumRelay\\QuantumRelay.csproj",
         "projectName": "QuantumRelay",
-        "projectPath": "D:\\Downloads\\QuantumRelay-v1.0.1-foundation-source\\QuantumRelay_v1_RoosterWorks\\Source\\QuantumRelay\\QuantumRelay.csproj",
+        "projectPath": "C:\\Users\\rida6\\Projects\\QuantumRelay\\Quantum-Relay\\QuantumRelay\\QuantumRelay.csproj",
         "packagesPath": "C:\\Users\\rida6\\.nuget\\packages\\",
-        "outputPath": "D:\\Downloads\\QuantumRelay-v1.0.1-foundation-source\\QuantumRelay_v1_RoosterWorks\\Source\\QuantumRelay\\obj\\",
+        "outputPath": "C:\\Users\\rida6\\Projects\\QuantumRelay\\Quantum-Relay\\QuantumRelay\\obj\\",
         "projectStyle": "PackageReference",
         "configFilePaths": [
           "C:\\Users\\rida6\\AppData\\Roaming\\NuGet\\NuGet.Config"

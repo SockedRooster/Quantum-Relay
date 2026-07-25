@@ -14,6 +14,14 @@ namespace QuantumRelay
     {
         private static bool _loggedWaiting;
 
+        public static bool IsInstalled
+        {
+            get
+            {
+                return CommNetNetwork.Instance != null && CommNetNetwork.Instance.CommNet is QuantumCommNetwork;
+            }
+        }
+
         public static bool EnsureInstalled()
         {
             CommNetNetwork owner = CommNetNetwork.Instance;

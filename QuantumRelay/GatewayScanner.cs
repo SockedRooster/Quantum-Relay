@@ -14,14 +14,18 @@ namespace QuantumRelay
         public bool HasReflector { get; set; }
         public bool ReflectorDeployed { get; set; }
         public string ReflectorEvidence { get; set; }
+        public bool HasQuantumRelayModule { get; set; }
+        public string RelayHardwareEvidence { get; set; }
         public bool HasCommNet { get; set; }
         public string CommNetEvidence { get; set; }
         public bool HasProbeControl { get; set; }
         public double ElectricChargeAmount { get; set; }
         public double ElectricChargeCapacity { get; set; }
         public bool HasElectricCharge => ElectricChargeAmount > 0.01;
-        public bool IsValid => Vessel != null && Wormhole != null && HasReflector && ReflectorDeployed && HasCommNet && HasProbeControl && HasElectricCharge;
-        public string StatusKey => string.Join("|", IsValid, HasReflector, ReflectorDeployed, HasCommNet, HasProbeControl, HasElectricCharge, ReflectorEvidence ?? string.Empty, CommNetEvidence ?? string.Empty);
+        public bool HasRelayHardware => HasQuantumRelayModule || HasReflector;
+        public bool RelayHardwareReady => HasQuantumRelayModule ? ReflectorDeployed : (HasReflector && ReflectorDeployed);
+        public bool IsValid => Vessel != null && Wormhole != null && HasRelayHardware && RelayHardwareReady && HasCommNet && HasProbeControl && HasElectricCharge;
+        public string StatusKey => string.Join("|", IsValid, HasQuantumRelayModule, HasReflector, ReflectorDeployed, HasCommNet, HasProbeControl, HasElectricCharge, RelayHardwareEvidence ?? string.Empty, ReflectorEvidence ?? string.Empty, CommNetEvidence ?? string.Empty);
     }
 
     internal static class GatewayScanner
@@ -71,6 +75,7 @@ namespace QuantumRelay
                 DistanceMetres = distance,
                 IsLoaded = vessel.loaded,
                 ReflectorEvidence = "not found",
+                RelayHardwareEvidence = "not found",
                 CommNetEvidence = "not found"
             };
         }
@@ -82,13 +87,27 @@ namespace QuantumRelay
             {
                 foreach (Part part in vessel.parts)
                 {
+                    PartModule relayModule = FindModule(part, QuantumRelayConstants.QuantumRelayModuleName);
+                    if (relayModule != null)
+                    {
+                        ModuleQuantumRelay quantumModule = relayModule as ModuleQuantumRelay;
+                        result.HasQuantumRelayModule = true;
+                        result.HasReflector = true;
+                        result.ReflectorDeployed = result.ReflectorDeployed || (quantumModule != null && quantumModule.IsOperational());
+                        result.RelayHardwareEvidence = quantumModule != null
+                            ? "ModuleQuantumRelay; enabled=" + quantumModule.relayEnabled + "; requiresDeployment=" + quantumModule.requiresDeployment
+                            : "ModuleQuantumRelay runtime type unavailable";
+                        result.ReflectorEvidence = result.RelayHardwareEvidence;
+                    }
+
                     PartModule reflectorModule = FindModule(part, QuantumRelaySettings.ReflectorModuleName);
                     if (reflectorModule != null)
                     {
                         ReflectorDetection detection = ReflectorDetector.InspectLoaded(part, reflectorModule);
                         result.HasReflector = true;
-                        result.ReflectorDeployed = detection.Deployed;
-                        result.ReflectorEvidence = detection.Evidence;
+                        result.ReflectorDeployed = result.ReflectorDeployed || detection.Deployed;
+                        if (!result.HasQuantumRelayModule)
+                            result.ReflectorEvidence = detection.Evidence;
                     }
                     if (FindModule(part, QuantumRelaySettings.CommandModuleName) != null)
                         result.HasProbeControl = true;
@@ -111,13 +130,41 @@ namespace QuantumRelay
             {
                 foreach (ProtoPartSnapshot part in proto.protoPartSnapshots)
                 {
+                    ProtoPartModuleSnapshot relayModule = FindProtoModule(part, QuantumRelayConstants.QuantumRelayModuleName);
+                    if (relayModule != null)
+                    {
+                        result.HasQuantumRelayModule = true;
+                        result.HasReflector = true;
+                        bool enabled = ReadProtoBool(relayModule, "relayEnabled", true);
+                        bool requiresDeployment = ReadProtoBool(relayModule, "requiresDeployment", true);
+                        string deploymentModuleName = relayModule.moduleValues != null
+                            ? relayModule.moduleValues.GetValue("deploymentModuleName")
+                            : null;
+                        if (string.IsNullOrEmpty(deploymentModuleName))
+                            deploymentModuleName = QuantumRelaySettings.ReflectorModuleName;
+
+                        bool deployed = !requiresDeployment;
+                        if (requiresDeployment)
+                        {
+                            ProtoPartModuleSnapshot deployment = FindProtoModule(part, deploymentModuleName);
+                            if (deployment != null)
+                                deployed = ReflectorDetector.InspectUnloaded(part, deployment).Deployed;
+                        }
+
+                        result.ReflectorDeployed = result.ReflectorDeployed || (enabled && deployed);
+                        result.RelayHardwareEvidence = "ModuleQuantumRelay; enabled=" + enabled +
+                            "; requiresDeployment=" + requiresDeployment + "; deployed=" + deployed;
+                        result.ReflectorEvidence = result.RelayHardwareEvidence;
+                    }
+
                     ProtoPartModuleSnapshot reflectorModule = FindProtoModule(part, QuantumRelaySettings.ReflectorModuleName);
                     if (reflectorModule != null)
                     {
                         ReflectorDetection detection = ReflectorDetector.InspectUnloaded(part, reflectorModule);
                         result.HasReflector = true;
-                        result.ReflectorDeployed = detection.Deployed;
-                        result.ReflectorEvidence = detection.Evidence;
+                        result.ReflectorDeployed = result.ReflectorDeployed || detection.Deployed;
+                        if (!result.HasQuantumRelayModule)
+                            result.ReflectorEvidence = detection.Evidence;
                     }
                     if (FindProtoModule(part, QuantumRelaySettings.CommandModuleName) != null)
                         result.HasProbeControl = true;
@@ -148,12 +195,11 @@ namespace QuantumRelay
                 object connection = vessel.connection;
                 if (connection == null)
                 {
-                    evidence = "vessel.connection=null";
-                    return false;
+                    evidence = "vessel.connection=null; checking transmitter fallback";
                 }
 
                 const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
-                object comm = ReadMember(connection, "Comm", flags) ?? ReadMember(connection, "comm", flags);
+                object comm = connection != null ? (ReadMember(connection, "Comm", flags) ?? ReadMember(connection, "comm", flags)) : null;
                 if (comm != null)
                 {
                     object canRelay = ReadMember(comm, "CanRelay", flags) ?? ReadMember(comm, "canRelay", flags);
@@ -247,9 +293,17 @@ namespace QuantumRelay
             return lines.Count == 0 ? "no relevant hardware modules found" : string.Join(" || ", lines.ToArray());
         }
 
+        private static bool ReadProtoBool(ProtoPartModuleSnapshot module, string key, bool fallback)
+        {
+            if (module == null || module.moduleValues == null) return fallback;
+            bool value;
+            return bool.TryParse(module.moduleValues.GetValue(key), out value) ? value : fallback;
+        }
+
         private static bool IsRelevantModule(string moduleName)
         {
-            return string.Equals(moduleName, QuantumRelaySettings.ReflectorModuleName, StringComparison.OrdinalIgnoreCase) ||
+            return string.Equals(moduleName, QuantumRelayConstants.QuantumRelayModuleName, StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(moduleName, QuantumRelaySettings.ReflectorModuleName, StringComparison.OrdinalIgnoreCase) ||
                    string.Equals(moduleName, QuantumRelaySettings.TransmitterModuleName, StringComparison.OrdinalIgnoreCase) ||
                    string.Equals(moduleName, QuantumRelaySettings.CommandModuleName, StringComparison.OrdinalIgnoreCase) ||
                    string.Equals(moduleName, "ModuleDeployablePart", StringComparison.OrdinalIgnoreCase);

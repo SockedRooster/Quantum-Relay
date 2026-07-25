@@ -135,6 +135,11 @@ namespace QuantumRelay
             catch { return null; }
         }
 
+        public static void QueueRebuildNow()
+        {
+            QueueRebuild();
+        }
+
         private static void QueueRebuild()
         {
             try
