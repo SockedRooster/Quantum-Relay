@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "dgSpecHash": "dcUi4xxVl6Y=",
+  "success": true,
+  "projectFilePath": "D:\\Downloads\\QuantumRelay-v1.0.1-foundation-source\\QuantumRelay_v1_RoosterWorks\\Source\\QuantumRelay\\QuantumRelay.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\rida6\\.nuget\\packages\\microsoft.netframework.referenceassemblies\\1.0.3\\microsoft.netframework.referenceassemblies.1.0.3.nupkg.sha512",
+    "C:\\Users\\rida6\\.nuget\\packages\\microsoft.netframework.referenceassemblies.net472\\1.0.3\\microsoft.netframework.referenceassemblies.net472.1.0.3.nupkg.sha512"
+  ],
+  "logs": []
+}

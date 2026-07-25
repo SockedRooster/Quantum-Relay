@@ -1,0 +1,7 @@
+D:\Downloads\QuantumRelay-v1.0.1-foundation-source\QuantumRelay_v1_RoosterWorks\GameData\QuantumRelay\Plugins\QuantumRelay.dll
+D:\Downloads\QuantumRelay-v1.0.1-foundation-source\QuantumRelay_v1_RoosterWorks\GameData\QuantumRelay\Plugins\QuantumRelay.pdb
+D:\Downloads\QuantumRelay-v1.0.1-foundation-source\QuantumRelay_v1_RoosterWorks\Source\QuantumRelay\obj\Release\QuantumRelay.csproj.AssemblyReference.cache
+D:\Downloads\QuantumRelay-v1.0.1-foundation-source\QuantumRelay_v1_RoosterWorks\Source\QuantumRelay\obj\Release\QuantumRelay.GeneratedMSBuildEditorConfig.editorconfig
+D:\Downloads\QuantumRelay-v1.0.1-foundation-source\QuantumRelay_v1_RoosterWorks\Source\QuantumRelay\obj\Release\QuantumRelay.csproj.CoreCompileInputs.cache
+D:\Downloads\QuantumRelay-v1.0.1-foundation-source\QuantumRelay_v1_RoosterWorks\Source\QuantumRelay\obj\Release\QuantumRelay.dll
+D:\Downloads\QuantumRelay-v1.0.1-foundation-source\QuantumRelay_v1_RoosterWorks\Source\QuantumRelay\obj\Release\QuantumRelay.pdb
