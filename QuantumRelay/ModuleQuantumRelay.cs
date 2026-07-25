@@ -32,7 +32,17 @@ namespace QuantumRelay
 
         [KSPField(guiActive = true, guiActiveEditor = true, guiName = "Quantum Relay")]
         public string relayStatus = "Standby";
+[KSPField(guiActive = true, guiName = "Deployment")]
+public string deploymentStatus = "Unknown";
 
+[KSPField(guiActive = true, guiName = "Operational")]
+public string operationalStatus = "NO";
+
+[KSPField(guiActive = true, guiName = "Electric Charge")]
+public string powerStatus = "Unavailable";
+
+[KSPField(guiActive = true, guiName = "CommNet")]
+public string commNetStatus = "Not Detected";
         [KSPEvent(
             guiActive = true,
             guiActiveEditor = false,
@@ -328,8 +338,103 @@ namespace QuantumRelay
                 }
             }
 
-            UpdateEventVisibility(deploymentState);
+            UpdateDiagnostics(deploymentState);
+UpdateEventVisibility(deploymentState);
         }
+        private void UpdateDiagnostics(RelayDeploymentState deploymentState)
+{
+    deploymentStatus = GetDeploymentDisplayName(deploymentState);
+
+    bool operational =
+        relayEnabled &&
+        (deploymentState == RelayDeploymentState.Fixed ||
+         deploymentState == RelayDeploymentState.Extended);
+
+    operationalStatus = operational ? "YES" : "NO";
+
+    Vessel vessel = part != null ? part.vessel : null;
+
+    if (vessel == null)
+    {
+        powerStatus = "Unavailable";
+        commNetStatus = "Unavailable";
+        return;
+    }
+
+    try
+    {
+        double amount;
+        double capacity;
+
+        vessel.GetConnectedResourceTotals(
+            PartResourceLibrary.ElectricityHashcode,
+            out amount,
+            out capacity);
+
+        powerStatus = string.Format(
+            "{0:N1} / {1:N1} EC",
+            amount,
+            capacity);
+    }
+    catch (Exception exception)
+    {
+        powerStatus = "Unavailable";
+
+        Debug.LogWarning(
+            "[QuantumRelay] Unable to read Electric Charge: " +
+            exception.Message);
+    }
+
+    try
+    {
+        string evidence;
+        bool hasCommNet =
+            GatewayScanner.HasCommNetCapability(vessel, out evidence);
+
+        commNetStatus = hasCommNet
+            ? "Detected"
+            : "Not Detected";
+    }
+    catch (Exception exception)
+    {
+        commNetStatus = "Unavailable";
+
+        Debug.LogWarning(
+            "[QuantumRelay] Unable to inspect CommNet capability: " +
+            exception.Message);
+    }
+}
+
+private static string GetDeploymentDisplayName(
+    RelayDeploymentState deploymentState)
+{
+    switch (deploymentState)
+    {
+        case RelayDeploymentState.Fixed:
+            return "Fixed";
+
+        case RelayDeploymentState.Missing:
+            return "Module Missing";
+
+        case RelayDeploymentState.Retracted:
+            return "Retracted";
+
+        case RelayDeploymentState.Extending:
+            return "Extending";
+
+        case RelayDeploymentState.Extended:
+            return "Extended";
+
+        case RelayDeploymentState.Retracting:
+            return "Retracting";
+
+        case RelayDeploymentState.Broken:
+            return "Broken";
+
+        default:
+            return "Unknown";
+    }
+}
 
         private void UpdateEventVisibility(
             RelayDeploymentState deploymentState)

@@ -186,6 +186,10 @@ namespace QuantumRelay
 
         // v0.7 no longer tries to recognise a particular relay antenna or Near Future feed.
         // It asks the vessel's own CommNet objects whether the vessel participates in CommNet.
+        internal static bool HasCommNetCapability(Vessel vessel, out string evidence)
+{
+    return TryGetCommNetCapability(vessel, out evidence);
+}
         private static bool TryGetCommNetCapability(Vessel vessel, out string evidence)
         {
             evidence = "none";
