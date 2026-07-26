@@ -306,6 +306,7 @@ namespace QuantumRelay
                 requiresDeployment,
                 deploymentModuleName);
             powerController = new RelayPowerController();
+            powerController.Configure(part);
             synchronizationController =
                 new RelaySynchronizationController();
 
@@ -385,6 +386,7 @@ namespace QuantumRelay
 
             bool hasPower = powerController.Consume(
                 part,
+                prePowerState,
                 requiredRate,
                 Math.Max(0.0, TimeWarp.fixedDeltaTime));
 

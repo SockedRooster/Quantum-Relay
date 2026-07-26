@@ -218,7 +218,7 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
 
             Color old = GUI.contentColor;
             GUI.contentColor = online ? Color.green : new Color(1f, 0.75f, 0.2f);
-            GUILayout.Label(online ? "Ã¢â€”Â BRIDGE ONLINE" : (QuantumRelayRegistry.HasTelemetry ? "Ã¢â€”Â LAST KNOWN: OFFLINE" : "Ã¢â€”Â AWAITING TELEMETRY"));
+            GUILayout.Label(online ? "[ONLINE] BRIDGE ONLINE" : (QuantumRelayRegistry.HasTelemetry ? "[OFFLINE] LAST KNOWN: OFFLINE" : "[WAITING] AWAITING TELEMETRY"));
             GUI.contentColor = old;
 
             if (!flight)
@@ -266,7 +266,7 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
                 gateway.RelayTier);
             Color old = GUI.contentColor;
             GUI.contentColor = gateway.IsValid ? Color.green : Color.yellow;
-            GUILayout.Label(gateway.IsValid ? "Ã¢â€”Â READY" : "Ã¢â€”Â WAITING");
+            GUILayout.Label(gateway.IsValid ? "[READY] READY" : "[WAITING] WAITING");
             GUI.contentColor = old;
             DrawRelayState(
                 gateway.HasQuantumRelayModule,
@@ -300,7 +300,7 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
                 gateway.RelayTier);
             Color old = GUI.contentColor;
             GUI.contentColor = gateway.Ready ? Color.green : Color.yellow;
-            GUILayout.Label(gateway.Ready ? "Ã¢â€”Â LAST KNOWN READY" : "Ã¢â€”Â LAST KNOWN WAITING");
+            GUILayout.Label(gateway.Ready ? "[READY] LAST KNOWN READY" : "[WAITING] LAST KNOWN WAITING");
             GUI.contentColor = old;
             DrawRelayState(
                 gateway.HasQuantumRelayModule,
