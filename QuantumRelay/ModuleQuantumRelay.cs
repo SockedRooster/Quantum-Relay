@@ -4,45 +4,155 @@ using UnityEngine;
 namespace QuantumRelay
 {
     /// <summary>
-    /// Public compatibility module for Quantum Relay-capable parts.
-    /// Part authors can add this module in config without changing plugin code.
+    /// KSP-facing module for Quantum Relay hardware.
+    /// Coordinates deployment, power, synchronization, diagnostics, and PAW UI.
     /// </summary>
     public sealed class ModuleQuantumRelay : PartModule
     {
-        private enum RelayDeploymentState
-        {
-            Fixed,
-            Missing,
-            Retracted,
-            Extending,
-            Extended,
-            Retracting,
-            Broken,
-            Unknown
-        }
+        private RelayStateMachine stateMachine;
+        private RelayDeploymentController deploymentController;
+        private RelayPowerController powerController;
+        private RelaySynchronizationController synchronizationController;
 
+        private QuantumRelayDeploymentState deploymentState =
+            QuantumRelayDeploymentState.Unknown;
+
+        private QuantumRelayOperationalState operationalState =
+            QuantumRelayOperationalState.Unknown;
+
+        private bool hasCommNetHardware;
+        private double nextStatusRefreshTime;
+
+        // Existing persistent field retained for save/config compatibility.
         [KSPField(isPersistant = true)]
         public bool relayEnabled = true;
+
+        [KSPField(isPersistant = true)]
+        public double synchronizationProgress;
+
+        [KSPField(isPersistant = true)]
+        public bool relaySynchronized;
+
+        [KSPField(isPersistant = true)]
+        public string persistedOperationalState = "Unknown";
 
         [KSPField]
         public bool requiresDeployment = true;
 
+        // Existing default retained for current reflector-based test hardware.
         [KSPField]
         public string deploymentModuleName = "ModuleDeployableReflector";
 
-        [KSPField(guiActive = true, guiActiveEditor = true, guiName = "Quantum Relay")]
+        [KSPField]
+        public int relayTier = 1;
+
+        [KSPField]
+        public string relayModel = "Quantum Relay";
+
+        [KSPField]
+        public bool requiresCommNetHardware = true;
+
+        [KSPField]
+        public double idlePowerRate = 0.02;
+
+        [KSPField]
+        public double synchronizationPowerRate = 1.0;
+
+        [KSPField]
+        public double operationalPowerRate = 0.5;
+
+        [KSPField]
+        public double synchronizationDuration = 10.0;
+
+        [KSPField]
+        public double statusRefreshInterval = 0.25;
+
+        [KSPField]
+        public bool resetSynchronizationWhenRetracted = true;
+
+        [KSPField]
+        public bool resetSynchronizationWhenDisabled = true;
+
+        [KSPField(
+            guiActive = true,
+            guiActiveEditor = true,
+            guiName = "Quantum Relay")]
         public string relayStatus = "Standby";
-[KSPField(guiActive = true, guiName = "Deployment")]
-public string deploymentStatus = "Unknown";
 
-[KSPField(guiActive = true, guiName = "Operational")]
-public string operationalStatus = "NO";
+        [KSPField(
+            guiActive = true,
+            guiActiveEditor = true,
+            guiName = "Relay Model")]
+        public string relayModelStatus = "Quantum Relay";
 
-[KSPField(guiActive = true, guiName = "Electric Charge")]
-public string powerStatus = "Unavailable";
+        [KSPField(guiActive = true, guiName = "Deployment")]
+        public string deploymentStatus = "Unknown";
 
-[KSPField(guiActive = true, guiName = "CommNet")]
-public string commNetStatus = "Not Detected";
+        [KSPField(guiActive = true, guiName = "Synchronization")]
+        public string synchronizationStatus = "Not Synchronized";
+
+        [KSPField(guiActive = true, guiName = "Power Usage")]
+        public string powerUsageStatus = "0.00 EC/s";
+
+        [KSPField(guiActive = true, guiName = "Operational")]
+        public string operationalStatus = "NO";
+
+        [KSPField(guiActive = true, guiName = "Electric Charge")]
+        public string powerStatus = "Unavailable";
+
+        [KSPField(guiActive = true, guiName = "CommNet")]
+        public string commNetStatus = "Not Detected";
+
+        public QuantumRelayDeploymentState DeploymentState
+        {
+            get { return deploymentState; }
+        }
+
+        public QuantumRelayOperationalState OperationalState
+        {
+            get { return operationalState; }
+        }
+
+        public bool IsSynchronized
+        {
+            get
+            {
+                return synchronizationController != null
+                    ? synchronizationController.IsSynchronized
+                    : relaySynchronized;
+            }
+        }
+
+        public double SynchronizationFraction
+        {
+            get
+            {
+                return synchronizationController != null
+                    ? synchronizationController.Progress
+                    : synchronizationProgress;
+            }
+        }
+
+        public double CurrentPowerRate
+        {
+            get
+            {
+                return powerController != null
+                    ? powerController.CurrentRate
+                    : 0.0;
+            }
+        }
+
+        public bool HasCommNetHardware
+        {
+            get { return hasCommNetHardware; }
+        }
+
+        public string OperationalStateName
+        {
+            get { return operationalState.ToString(); }
+        }
+
         [KSPEvent(
             guiActive = true,
             guiActiveEditor = false,
@@ -51,7 +161,7 @@ public string commNetStatus = "Not Detected";
         public void EnableRelay()
         {
             relayEnabled = true;
-            UpdateStatus();
+            ForceRefresh();
         }
 
         [KSPEvent(
@@ -62,7 +172,11 @@ public string commNetStatus = "Not Detected";
         public void DisableRelay()
         {
             relayEnabled = false;
-            UpdateStatus();
+
+            if (resetSynchronizationWhenDisabled)
+                ResetSynchronization();
+
+            ForceRefresh();
         }
 
         [KSPEvent(
@@ -72,8 +186,10 @@ public string commNetStatus = "Not Detected";
             active = true)]
         public void ExtendRelay()
         {
-            InvokeDeploymentEvent(true);
-            UpdateStatus();
+            if (deploymentController != null)
+                deploymentController.Invoke(true);
+
+            ForceRefresh();
         }
 
         [KSPEvent(
@@ -83,366 +199,346 @@ public string commNetStatus = "Not Detected";
             active = true)]
         public void RetractRelay()
         {
-            InvokeDeploymentEvent(false);
-            UpdateStatus();
+            if (deploymentController != null)
+                deploymentController.Invoke(false);
+
+            ForceRefresh();
+        }
+
+        [KSPEvent(
+            guiActive = true,
+            guiActiveEditor = false,
+            guiName = "Reset Synchronization",
+            active = true)]
+        public void ResetSynchronizationEvent()
+        {
+            ResetSynchronization();
+            ForceRefresh();
         }
 
         [KSPAction("Toggle Quantum Relay")]
         public void ToggleRelayAction(KSPActionParam parameter)
         {
             relayEnabled = !relayEnabled;
-            UpdateStatus();
+
+            if (!relayEnabled && resetSynchronizationWhenDisabled)
+                ResetSynchronization();
+
+            ForceRefresh();
         }
 
         [KSPAction("Enable Quantum Relay")]
         public void EnableRelayAction(KSPActionParam parameter)
         {
-            relayEnabled = true;
-            UpdateStatus();
+            EnableRelay();
         }
 
         [KSPAction("Disable Quantum Relay")]
         public void DisableRelayAction(KSPActionParam parameter)
         {
-            relayEnabled = false;
-            UpdateStatus();
+            DisableRelay();
         }
 
         [KSPAction("Extend Quantum Relay")]
         public void ExtendRelayAction(KSPActionParam parameter)
         {
-            InvokeDeploymentEvent(true);
-            UpdateStatus();
+            ExtendRelay();
         }
 
         [KSPAction("Retract Quantum Relay")]
         public void RetractRelayAction(KSPActionParam parameter)
         {
-            InvokeDeploymentEvent(false);
-            UpdateStatus();
+            RetractRelay();
+        }
+
+        [KSPAction("Toggle Relay Deployment")]
+        public void ToggleDeploymentAction(KSPActionParam parameter)
+        {
+            if (deploymentController == null)
+                return;
+
+            deploymentState = deploymentController.GetState();
+
+            if (deploymentState == QuantumRelayDeploymentState.Retracted ||
+                deploymentState == QuantumRelayDeploymentState.Retracting)
+            {
+                deploymentController.Invoke(true);
+            }
+            else if (
+                deploymentState == QuantumRelayDeploymentState.Extended ||
+                deploymentState == QuantumRelayDeploymentState.Extending)
+            {
+                deploymentController.Invoke(false);
+            }
+
+            ForceRefresh();
+        }
+
+        [KSPAction("Reset Relay Synchronization")]
+        public void ResetSynchronizationAction(KSPActionParam parameter)
+        {
+            ResetSynchronization();
+            ForceRefresh();
         }
 
         public override void OnStart(StartState state)
         {
             base.OnStart(state);
-            UpdateStatus();
+
+            stateMachine = new RelayStateMachine();
+            deploymentController = new RelayDeploymentController(
+                part,
+                requiresDeployment,
+                deploymentModuleName);
+            powerController = new RelayPowerController();
+            synchronizationController =
+                new RelaySynchronizationController();
+
+            synchronizationController.Restore(
+                synchronizationProgress,
+                relaySynchronized);
+
+            if (string.IsNullOrEmpty(relayModel))
+            {
+                relayModel =
+                    part != null && part.partInfo != null
+                        ? part.partInfo.title
+                        : "Quantum Relay";
+            }
+
+            RefreshDiagnostics();
+            EvaluateState(true);
+            UpdateDisplayFields();
+            UpdateEventVisibility();
         }
 
         public void Update()
         {
-            if (HighLogic.LoadedSceneIsFlight)
-                UpdateStatus();
+            if (!HighLogic.LoadedSceneIsFlight)
+                return;
+
+            if (Time.time < nextStatusRefreshTime)
+                return;
+
+            nextStatusRefreshTime =
+                Time.time + Math.Max(0.05, statusRefreshInterval);
+
+            RefreshDiagnostics();
+            EvaluateState(true);
+            UpdateDisplayFields();
+            UpdateEventVisibility();
         }
 
-        /// <summary>
-        /// Returns true when the relay is enabled and its deployment
-        /// requirement has been satisfied.
-        /// </summary>
+        public void FixedUpdate()
+        {
+            if (!HighLogic.LoadedSceneIsFlight ||
+                part == null ||
+                part.vessel == null ||
+                stateMachine == null ||
+                deploymentController == null ||
+                powerController == null ||
+                synchronizationController == null)
+            {
+                return;
+            }
+
+            deploymentState = deploymentController.GetState();
+            RefreshCommNetStatus();
+
+            bool hardwareReady =
+                deploymentState == QuantumRelayDeploymentState.Fixed ||
+                deploymentState == QuantumRelayDeploymentState.Extended;
+
+            if (!hardwareReady && resetSynchronizationWhenRetracted)
+                ResetSynchronization();
+
+            QuantumRelayOperationalState prePowerState =
+                stateMachine.Evaluate(
+                    relayEnabled,
+                    deploymentState,
+                    requiresCommNetHardware,
+                    hasCommNetHardware,
+                    true,
+                    synchronizationController.IsSynchronized);
+
+            double requiredRate = powerController.GetRequiredRate(
+                prePowerState,
+                relayEnabled,
+                idlePowerRate,
+                synchronizationPowerRate,
+                operationalPowerRate);
+
+            bool hasPower = powerController.Consume(
+                part,
+                requiredRate,
+                Math.Max(0.0, TimeWarp.fixedDeltaTime));
+
+            bool canSynchronize =
+                relayEnabled &&
+                hardwareReady &&
+                hasPower &&
+                (!requiresCommNetHardware || hasCommNetHardware);
+
+            if (canSynchronize &&
+                !synchronizationController.IsSynchronized)
+            {
+                synchronizationController.Tick(
+                    synchronizationDuration,
+                    TimeWarp.fixedDeltaTime);
+            }
+
+            PersistSynchronizationState();
+            EvaluateState(hasPower);
+        }
+
         public bool IsOperational()
         {
-            if (!relayEnabled || part == null)
-                return false;
-
-            if (!requiresDeployment)
-                return true;
-
-            return GetDeploymentState() == RelayDeploymentState.Extended;
+            return operationalState ==
+                   QuantumRelayOperationalState.Operational;
         }
 
-        private RelayDeploymentState GetDeploymentState()
+        private void EvaluateState(bool hasPower)
         {
-            if (!requiresDeployment)
-                return RelayDeploymentState.Fixed;
-
-            PartModule deployment = FindDeploymentModule();
-            if (deployment == null)
-                return RelayDeploymentState.Missing;
-
-            ModuleDeployablePart deployable = deployment as ModuleDeployablePart;
-            if (deployable != null)
-            {
-                switch (deployable.deployState)
-                {
-                    case ModuleDeployablePart.DeployState.RETRACTED:
-                        return RelayDeploymentState.Retracted;
-
-                    case ModuleDeployablePart.DeployState.EXTENDING:
-                        return RelayDeploymentState.Extending;
-
-                    case ModuleDeployablePart.DeployState.EXTENDED:
-                        return RelayDeploymentState.Extended;
-
-                    case ModuleDeployablePart.DeployState.RETRACTING:
-                        return RelayDeploymentState.Retracting;
-
-                    case ModuleDeployablePart.DeployState.BROKEN:
-                        return RelayDeploymentState.Broken;
-
-                    default:
-                        return RelayDeploymentState.Unknown;
-                }
-            }
-
-            if (deployment.Fields != null)
-            {
-                string[] fieldNames =
-                {
-                    "deployState",
-                    "isDeployed",
-                    "deployed",
-                    "state",
-                    "status",
-                    "stateString"
-                };
-
-                foreach (string fieldName in fieldNames)
-                {
-                    BaseField field = deployment.Fields[fieldName];
-                    if (field == null)
-                        continue;
-
-                    object value = field.GetValue(deployment);
-                    RelayDeploymentState detectedState =
-                        InterpretDeploymentValue(value);
-
-                    if (detectedState != RelayDeploymentState.Unknown)
-                        return detectedState;
-                }
-            }
-
-            return RelayDeploymentState.Unknown;
-        }
-
-        private PartModule FindDeploymentModule()
-        {
-            if (part == null ||
-                part.Modules == null ||
-                string.IsNullOrEmpty(deploymentModuleName))
-            {
-                return null;
-            }
-
-            foreach (PartModule module in part.Modules)
-            {
-                if (module != null &&
-                    string.Equals(
-                        module.moduleName,
-                        deploymentModuleName,
-                        StringComparison.OrdinalIgnoreCase))
-                {
-                    return module;
-                }
-            }
-
-            return null;
-        }
-
-        private void InvokeDeploymentEvent(bool extend)
-        {
-            if (!requiresDeployment)
+            if (stateMachine == null ||
+                synchronizationController == null)
                 return;
 
-            PartModule deployment = FindDeploymentModule();
-            if (deployment == null || deployment.Events == null)
-                return;
+            operationalState = stateMachine.Evaluate(
+                relayEnabled,
+                deploymentState,
+                requiresCommNetHardware,
+                hasCommNetHardware,
+                hasPower,
+                synchronizationController.IsSynchronized);
 
-            string[] eventNames = extend
-                ? new[]
-                {
-                    "Extend",
-                    "Deploy",
-                    "ExtendReflector",
-                    "DeployReflector",
-                    "ExtendAntenna"
-                }
-                : new[]
-                {
-                    "Retract",
-                    "RetractReflector",
-                    "RetractAntenna"
-                };
-
-            foreach (string eventName in eventNames)
-            {
-                BaseEvent deploymentEvent = deployment.Events[eventName];
-
-                if (deploymentEvent == null)
-                    continue;
-
-                try
-                {
-                    deploymentEvent.Invoke();
-                    return;
-                }
-                catch (Exception exception)
-                {
-                    Debug.LogWarning(
-                        "[QuantumRelay] Unable to invoke deployment event '" +
-                        eventName +
-                        "': " +
-                        exception.Message);
-                }
-            }
-
-            Debug.LogWarning(
-                "[QuantumRelay] No compatible " +
-                (extend ? "extend" : "retract") +
-                " event was found on deployment module " +
-                deployment.moduleName +
-                ".");
+            persistedOperationalState = operationalState.ToString();
         }
 
-        private void UpdateStatus()
+        private void RefreshDiagnostics()
         {
-            RelayDeploymentState deploymentState = GetDeploymentState();
+            if (deploymentController != null)
+                deploymentState = deploymentController.GetState();
 
-            if (!relayEnabled)
+            RefreshPowerStatus();
+            RefreshCommNetStatus();
+        }
+
+        private void RefreshPowerStatus()
+        {
+            Vessel vessel = part != null ? part.vessel : null;
+
+            if (vessel == null)
             {
-                relayStatus = "Disabled";
+                powerStatus = "Unavailable";
+                return;
+            }
+
+            try
+            {
+                double amount;
+                double capacity;
+
+                vessel.GetConnectedResourceTotals(
+                    PartResourceLibrary.ElectricityHashcode,
+                    out amount,
+                    out capacity);
+
+                powerStatus = string.Format(
+                    "{0:N1} / {1:N1} EC",
+                    amount,
+                    capacity);
+            }
+            catch (Exception exception)
+            {
+                powerStatus = "Unavailable";
+
+                Debug.LogWarning(
+                    "[QuantumRelay] Unable to read Electric Charge: " +
+                    exception.Message);
+            }
+        }
+
+        private void RefreshCommNetStatus()
+        {
+            Vessel vessel = part != null ? part.vessel : null;
+
+            if (vessel == null)
+            {
+                hasCommNetHardware = false;
+                commNetStatus = "Unavailable";
+                return;
+            }
+
+            if (!requiresCommNetHardware)
+            {
+                hasCommNetHardware = true;
+                commNetStatus = "Not Required";
+                return;
+            }
+
+            try
+            {
+                string evidence;
+                hasCommNetHardware =
+                    GatewayScanner.HasCommNetCapability(
+                        vessel,
+                        out evidence);
+
+                commNetStatus = hasCommNetHardware
+                    ? "Detected"
+                    : "Not Detected";
+            }
+            catch (Exception exception)
+            {
+                hasCommNetHardware = false;
+                commNetStatus = "Unavailable";
+
+                Debug.LogWarning(
+                    "[QuantumRelay] Unable to inspect CommNet capability: " +
+                    exception.Message);
+            }
+        }
+
+        private void UpdateDisplayFields()
+        {
+            relayModelStatus = relayModel;
+            relayStatus =
+                RelayStateMachine.GetDisplayName(operationalState);
+            deploymentStatus =
+                RelayDeploymentController.GetDisplayName(deploymentState);
+            operationalStatus = IsOperational() ? "YES" : "NO";
+
+            powerUsageStatus = string.Format(
+                "{0:N2} EC/s",
+                CurrentPowerRate);
+
+            if (IsSynchronized)
+            {
+                synchronizationStatus = "Synchronized";
+            }
+            else if (
+                operationalState ==
+                QuantumRelayOperationalState.Synchronizing)
+            {
+                synchronizationStatus = string.Format(
+                    "Synchronizing ({0:P0})",
+                    SynchronizationFraction);
             }
             else
             {
-                switch (deploymentState)
-                {
-                    case RelayDeploymentState.Fixed:
-                        relayStatus = "Ready (Fixed)";
-                        break;
-
-                    case RelayDeploymentState.Extended:
-                        relayStatus = "Ready (Extended)";
-                        break;
-
-                    case RelayDeploymentState.Extending:
-                        relayStatus = "Deploying";
-                        break;
-
-                    case RelayDeploymentState.Retracting:
-                        relayStatus = "Retracting";
-                        break;
-
-                    case RelayDeploymentState.Retracted:
-                        relayStatus = "Retracted";
-                        break;
-
-                    case RelayDeploymentState.Broken:
-                        relayStatus = "Deployment Hardware Broken";
-                        break;
-
-                    case RelayDeploymentState.Missing:
-                        relayStatus = "Deployment Module Missing";
-                        break;
-
-                    default:
-                        relayStatus = "Deployment State Unknown";
-                        break;
-                }
+                synchronizationStatus = string.Format(
+                    "Not Synchronized ({0:P0})",
+                    SynchronizationFraction);
             }
-
-            UpdateDiagnostics(deploymentState);
-UpdateEventVisibility(deploymentState);
         }
-        private void UpdateDiagnostics(RelayDeploymentState deploymentState)
-{
-    deploymentStatus = GetDeploymentDisplayName(deploymentState);
 
-    bool operational =
-        relayEnabled &&
-        (deploymentState == RelayDeploymentState.Fixed ||
-         deploymentState == RelayDeploymentState.Extended);
-
-    operationalStatus = operational ? "YES" : "NO";
-
-    Vessel vessel = part != null ? part.vessel : null;
-
-    if (vessel == null)
-    {
-        powerStatus = "Unavailable";
-        commNetStatus = "Unavailable";
-        return;
-    }
-
-    try
-    {
-        double amount;
-        double capacity;
-
-        vessel.GetConnectedResourceTotals(
-            PartResourceLibrary.ElectricityHashcode,
-            out amount,
-            out capacity);
-
-        powerStatus = string.Format(
-            "{0:N1} / {1:N1} EC",
-            amount,
-            capacity);
-    }
-    catch (Exception exception)
-    {
-        powerStatus = "Unavailable";
-
-        Debug.LogWarning(
-            "[QuantumRelay] Unable to read Electric Charge: " +
-            exception.Message);
-    }
-
-    try
-    {
-        string evidence;
-        bool hasCommNet =
-            GatewayScanner.HasCommNetCapability(vessel, out evidence);
-
-        commNetStatus = hasCommNet
-            ? "Detected"
-            : "Not Detected";
-    }
-    catch (Exception exception)
-    {
-        commNetStatus = "Unavailable";
-
-        Debug.LogWarning(
-            "[QuantumRelay] Unable to inspect CommNet capability: " +
-            exception.Message);
-    }
-}
-
-private static string GetDeploymentDisplayName(
-    RelayDeploymentState deploymentState)
-{
-    switch (deploymentState)
-    {
-        case RelayDeploymentState.Fixed:
-            return "Fixed";
-
-        case RelayDeploymentState.Missing:
-            return "Module Missing";
-
-        case RelayDeploymentState.Retracted:
-            return "Retracted";
-
-        case RelayDeploymentState.Extending:
-            return "Extending";
-
-        case RelayDeploymentState.Extended:
-            return "Extended";
-
-        case RelayDeploymentState.Retracting:
-            return "Retracting";
-
-        case RelayDeploymentState.Broken:
-            return "Broken";
-
-        default:
-            return "Unknown";
-    }
-}
-
-        private void UpdateEventVisibility(
-            RelayDeploymentState deploymentState)
+        private void UpdateEventVisibility()
         {
             BaseEvent enableEvent = Events["EnableRelay"];
             BaseEvent disableEvent = Events["DisableRelay"];
             BaseEvent extendEvent = Events["ExtendRelay"];
             BaseEvent retractEvent = Events["RetractRelay"];
+            BaseEvent resetEvent = Events["ResetSynchronizationEvent"];
 
             if (enableEvent != null)
                 enableEvent.active = !relayEnabled;
@@ -452,72 +548,61 @@ private static string GetDeploymentDisplayName(
 
             bool canControlDeployment =
                 requiresDeployment &&
-                deploymentState != RelayDeploymentState.Missing &&
-                deploymentState != RelayDeploymentState.Fixed &&
-                deploymentState != RelayDeploymentState.Broken;
+                deploymentState != QuantumRelayDeploymentState.Missing &&
+                deploymentState != QuantumRelayDeploymentState.Fixed &&
+                deploymentState != QuantumRelayDeploymentState.Broken;
 
             if (extendEvent != null)
             {
                 extendEvent.active =
                     canControlDeployment &&
-                    (deploymentState == RelayDeploymentState.Retracted ||
-                     deploymentState == RelayDeploymentState.Unknown);
+                    (deploymentState ==
+                         QuantumRelayDeploymentState.Retracted ||
+                     deploymentState ==
+                         QuantumRelayDeploymentState.Unknown);
             }
 
             if (retractEvent != null)
             {
                 retractEvent.active =
                     canControlDeployment &&
-                    deploymentState == RelayDeploymentState.Extended;
+                    deploymentState ==
+                        QuantumRelayDeploymentState.Extended;
+            }
+
+            if (resetEvent != null)
+            {
+                resetEvent.active =
+                    IsSynchronized ||
+                    SynchronizationFraction > 0.0001;
             }
         }
 
-        private static RelayDeploymentState InterpretDeploymentValue(
-            object value)
+        private void ResetSynchronization()
         {
-            if (value == null)
-                return RelayDeploymentState.Unknown;
+            if (synchronizationController != null)
+                synchronizationController.Reset();
 
-            bool booleanValue;
-            string text = value.ToString().Trim();
+            synchronizationProgress = 0.0;
+            relaySynchronized = false;
+        }
 
-            if (bool.TryParse(text, out booleanValue))
-            {
-                return booleanValue
-                    ? RelayDeploymentState.Extended
-                    : RelayDeploymentState.Retracted;
-            }
+        private void PersistSynchronizationState()
+        {
+            synchronizationProgress =
+                synchronizationController.Progress;
+            relaySynchronized =
+                synchronizationController.IsSynchronized;
+        }
 
-            string upper = text.ToUpperInvariant();
-
-            if (upper.Contains("RETRACTING"))
-                return RelayDeploymentState.Retracting;
-
-            if (upper.Contains("EXTENDING") ||
-                upper.Contains("DEPLOYING"))
-            {
-                return RelayDeploymentState.Extending;
-            }
-
-            if (upper.Contains("RETRACTED") ||
-                upper.Contains("STOWED"))
-            {
-                return RelayDeploymentState.Retracted;
-            }
-
-            if (upper.Contains("EXTENDED") ||
-                upper.Contains("DEPLOYED"))
-            {
-                return RelayDeploymentState.Extended;
-            }
-
-            if (upper.Contains("BROKEN") ||
-                upper.Contains("FAILED"))
-            {
-                return RelayDeploymentState.Broken;
-            }
-
-            return RelayDeploymentState.Unknown;
+        private void ForceRefresh()
+        {
+            RefreshDiagnostics();
+            EvaluateState(
+                powerController == null || powerController.HasPower);
+            UpdateDisplayFields();
+            UpdateEventVisibility();
+            nextStatusRefreshTime = 0.0;
         }
     }
 }
