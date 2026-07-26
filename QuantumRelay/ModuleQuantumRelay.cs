@@ -13,6 +13,7 @@ namespace QuantumRelay
         private RelayDeploymentController deploymentController;
         private RelayPowerController powerController;
         private RelaySynchronizationController synchronizationController;
+        private RelayDefinition relayDefinition;
 
         private QuantumRelayDeploymentState deploymentState =
             QuantumRelayDeploymentState.Unknown;
@@ -45,7 +46,7 @@ namespace QuantumRelay
         public string deploymentModuleName = "ModuleDeployableReflector";
 
         [KSPField]
-        public int relayTier = 1;
+        public string relayClass = "Pioneer";
 
         [KSPField]
         public string relayModel = "Quantum Relay";
@@ -65,11 +66,6 @@ namespace QuantumRelay
         [KSPField]
         public double synchronizationDuration = 10.0;
 
-        [KSPField]
-        public double signalStrength = 1.0;
-
-        [KSPField]
-        public int maxWormholes = 1;
 
         [KSPField]
         public double deploymentLossGracePeriod = 2.0;
@@ -173,9 +169,44 @@ namespace QuantumRelay
             get { return hasCommNetHardware; }
         }
 
+        public RelayClass RelayClass
+        {
+            get
+            {
+                return relayDefinition != null
+                    ? relayDefinition.RelayClass
+                    : RelayCatalog.Parse(relayClass, 1);
+            }
+        }
+
+        public int RelayTier
+        {
+            get
+            {
+                return relayDefinition != null
+                    ? relayDefinition.Tier
+                    : RelayCatalog.Get(RelayClass).Tier;
+            }
+        }
+
+        public int DesignCapacity
+        {
+            get
+            {
+                return relayDefinition != null
+                    ? relayDefinition.DesignCapacity
+                    : RelayCatalog.Get(RelayClass).DesignCapacity;
+            }
+        }
+
         public double SignalStrengthMultiplier
         {
-            get { return Math.Max(0.0, Math.Min(1.25, signalStrength)); }
+            get
+            {
+                return relayDefinition != null
+                    ? relayDefinition.SynchronizationStrength
+                    : RelayCatalog.Get(RelayClass).SynchronizationStrength;
+            }
         }
 
         public string OperationalStateName
@@ -314,6 +345,8 @@ namespace QuantumRelay
         public override void OnStart(StartState state)
         {
             base.OnStart(state);
+
+            ApplyOfficialRelayDefinition();
 
             stateMachine = new RelayStateMachine();
             deploymentController = new RelayDeploymentController(
@@ -599,7 +632,7 @@ namespace QuantumRelay
             if (!string.IsNullOrEmpty(startupComplete))
                 return startupComplete;
 
-            switch (relayTier)
+            switch (RelayTier)
             {
                 case 1:
                     return "Quantum Link Established";
@@ -625,7 +658,7 @@ namespace QuantumRelay
             if (!string.IsNullOrEmpty(configuredStage))
                 return configuredStage;
 
-            switch (relayTier)
+            switch (RelayTier)
             {
                 case 1:
                     switch (stage)
@@ -699,6 +732,15 @@ namespace QuantumRelay
                 default:
                     return "";
             }
+        }
+
+
+        private void ApplyOfficialRelayDefinition()
+        {
+            RelayClass parsedClass = RelayCatalog.Parse(relayClass, 1);
+            relayDefinition = RelayCatalog.Get(parsedClass);
+            relayClass = relayDefinition.RelayClass.ToString();
+            relayModel = relayDefinition.DisplayName;
         }
 
         private void UpdateEventVisibility()

@@ -44,43 +44,23 @@ namespace QuantumRelay
 
         public bool HasRelayHardware
         {
-            get { return HasQuantumRelayModule || HasReflector; }
+            get { return HasQuantumRelayModule; }
         }
 
-        /// <summary>
-        /// Quantum Relay modules are the single source of truth for modern
-        /// hardware. Legacy reflector-only vessels retain the old readiness
-        /// calculation until they are migrated to ModuleQuantumRelay.
-        /// </summary>
         public bool RelayHardwareReady
         {
-            get
-            {
-                return HasQuantumRelayModule
-                    ? QuantumRelayOperational
-                    : HasReflector && ReflectorDeployed;
-            }
+            get { return HasQuantumRelayModule && QuantumRelayOperational; }
         }
 
         public bool IsValid
         {
             get
             {
-                if (Vessel == null || Wormhole == null || !HasRelayHardware)
-                    return false;
-
-                if (HasQuantumRelayModule)
-                {
-                    // Deployment, power, CommNet, and synchronization are
-                    // already owned by ModuleQuantumRelay.
-                    return QuantumRelayOperational && HasProbeControl;
-                }
-
-                // Compatibility path for older reflector-only gateways.
-                return ReflectorDeployed &&
-                       HasCommNet &&
-                       HasProbeControl &&
-                       HasElectricCharge;
+                return Vessel != null &&
+                       Wormhole != null &&
+                       HasQuantumRelayModule &&
+                       QuantumRelayOperational &&
+                       HasProbeControl;
             }
         }
 
@@ -242,7 +222,6 @@ namespace QuantumRelay
                 foreach (Part part in vessel.parts)
                 {
                     InspectLoadedRelayModule(part, result);
-                    InspectLoadedLegacyReflector(part, result);
 
                     if (FindModule(
                             part,
@@ -289,7 +268,6 @@ namespace QuantumRelay
                 return;
 
             result.HasQuantumRelayModule = true;
-            result.HasReflector = true;
 
             ModuleQuantumRelay relay =
                 relayPartModule as ModuleQuantumRelay;
@@ -332,7 +310,7 @@ namespace QuantumRelay
                 result.RelayPowerRate =
                     relay.CurrentPowerRate;
                 result.RelayTier =
-                    relay.relayTier;
+                    relay.RelayTier;
                 result.RelayModel =
                     relay.relayModel;
                 result.RelaySignalStrength =
@@ -345,7 +323,7 @@ namespace QuantumRelay
                 "synchronized={5}; synchronization={6:P0}; " +
                 "powerRate={7:N2} EC/s; signal={8:P0}",
                 relay.relayModel,
-                relay.relayTier,
+                relay.RelayTier,
                 relay.relayEnabled,
                 relay.DeploymentState,
                 relay.OperationalStateName,
@@ -356,31 +334,6 @@ namespace QuantumRelay
 
             result.ReflectorEvidence =
                 result.RelayHardwareEvidence;
-        }
-
-        private static void InspectLoadedLegacyReflector(
-            Part part,
-            GatewayCandidate result)
-        {
-            PartModule reflectorModule =
-                FindModule(
-                    part,
-                    QuantumRelaySettings.ReflectorModuleName);
-
-            if (reflectorModule == null)
-                return;
-
-            ReflectorDetection detection =
-                ReflectorDetector.InspectLoaded(
-                    part,
-                    reflectorModule);
-
-            result.HasReflector = true;
-            result.ReflectorDeployed =
-                result.ReflectorDeployed || detection.Deployed;
-
-            if (!result.HasQuantumRelayModule)
-                result.ReflectorEvidence = detection.Evidence;
         }
 
         private static GatewayCandidate InspectUnloaded(
@@ -400,7 +353,6 @@ namespace QuantumRelay
                     proto.protoPartSnapshots)
                 {
                     InspectUnloadedRelayModule(part, result);
-                    InspectUnloadedLegacyReflector(part, result);
 
                     if (FindProtoModule(
                             part,
@@ -439,7 +391,6 @@ namespace QuantumRelay
                 FindPrefabRelayModule(part);
 
             result.HasQuantumRelayModule = true;
-            result.HasReflector = true;
 
             bool enabled =
                 ReadProtoBool(
@@ -470,21 +421,20 @@ namespace QuantumRelay
                     "persistedOperationalState",
                     null);
 
-            string model =
+            string configuredClass =
                 ReadProtoString(
                     relay,
-                    "relayModel",
+                    "relayClass",
                     prefabRelay != null
-                        ? prefabRelay.relayModel
-                        : "Quantum Relay");
+                        ? prefabRelay.relayClass
+                        : RelayClass.Pioneer.ToString());
 
-            int tier =
-                ReadProtoInt(
-                    relay,
-                    "relayTier",
-                    prefabRelay != null
-                        ? prefabRelay.relayTier
-                        : 1);
+            RelayClass relayClass =
+                RelayCatalog.Parse(configuredClass, 1);
+            RelayDefinition definition =
+                RelayCatalog.Get(relayClass);
+            string model = definition.DisplayName;
+            int tier = definition.Tier;
 
             double idlePowerRate =
                 ReadProtoDouble(
@@ -511,16 +461,7 @@ namespace QuantumRelay
                         : 0.5);
 
             double signalStrength =
-                ReadProtoDouble(
-                    relay,
-                    "signalStrength",
-                    prefabRelay != null
-                        ? prefabRelay.signalStrength
-                        : (tier >= 4
-                            ? 1.25
-                            : (tier >= 3
-                                ? 1.0
-                                : (tier == 2 ? 0.6 : 0.4))));
+                definition.SynchronizationStrength;
 
             string deploymentModuleName =
                 ReadProtoString(
@@ -615,11 +556,11 @@ namespace QuantumRelay
             }
 
             result.RelayHardwareEvidence = string.Format(
-                "ModuleQuantumRelay proto; model={0}; tier={1}; " +
+                "ModuleQuantumRelay proto; model={0}; class={1}; " +
                 "enabled={2}; deployment={3}; persistedState={4}; " +
                 "synchronized={5}; synchronization={6:P0}",
                 model,
-                tier,
+                relayClass,
                 enabled,
                 deploymentState,
                 string.IsNullOrEmpty(persistedState)
@@ -687,31 +628,6 @@ namespace QuantumRelay
                 state,
                 QuantumRelayOperationalState.Operational.ToString(),
                 StringComparison.OrdinalIgnoreCase);
-        }
-
-        private static void InspectUnloadedLegacyReflector(
-            ProtoPartSnapshot part,
-            GatewayCandidate result)
-        {
-            ProtoPartModuleSnapshot reflectorModule =
-                FindProtoModule(
-                    part,
-                    QuantumRelaySettings.ReflectorModuleName);
-
-            if (reflectorModule == null)
-                return;
-
-            ReflectorDetection detection =
-                ReflectorDetector.InspectUnloaded(
-                    part,
-                    reflectorModule);
-
-            result.HasReflector = true;
-            result.ReflectorDeployed =
-                result.ReflectorDeployed || detection.Deployed;
-
-            if (!result.HasQuantumRelayModule)
-                result.ReflectorEvidence = detection.Evidence;
         }
 
         private static void ReadProtoElectricCharge(

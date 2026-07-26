@@ -48,6 +48,8 @@
     <Compile Include="QuantumRelayRegistry.cs" />
     <Compile Include="QuantumRelayRuntimeState.cs" />
     <Compile Include="QuantumRelaySettings.cs" />
+    <Compile Include="RelayClass.cs" />
+    <Compile Include="RelayDefinition.cs" />
     <Compile Include="ReflectorDetector.cs" />
     <Compile Include="WormholeScanner.cs" />
   </ItemGroup>
