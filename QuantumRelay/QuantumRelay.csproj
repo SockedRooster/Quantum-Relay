@@ -12,9 +12,9 @@
     <Description>Stable multi-tier quantum relay routing through Promised Worlds wormholes.</Description>
     <Copyright>Copyright © 2026 RoosterWorks</Copyright>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <Version>1.3.1</Version>
-    <AssemblyVersion>1.3.1.0</AssemblyVersion>
-    <FileVersion>1.3.1.0</FileVersion>
+    <Version>1.5.0</Version>
+    <AssemblyVersion>1.5.0.0</AssemblyVersion>
+    <FileVersion>1.5.0.0</FileVersion>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <KSPRoot Condition=" '$(KSPRoot)' == '' ">A:\SteamLibrary\steamapps\common\Kerbal Space Program</KSPRoot>
@@ -28,6 +28,9 @@
     <Compile Include="Core/ActiveQuantumLink.cs" />
     <Compile Include="Core/QuantumBridge.cs" />
     <Compile Include="Core/QuantumNetwork.cs" />
+    <Compile Include="Core/QuantumManager.cs" />
+    <Compile Include="Core/QuantumRouteCache.cs" />
+    <Compile Include="Core/QuantumRouter.cs" />
     <Compile Include="Core/QuantumRelayStates.cs" />
     <Compile Include="Core/RelayDeploymentController.cs" />
     <Compile Include="Core/RelayPowerController.cs" />
@@ -36,6 +39,8 @@
     <Compile Include="GatewayScanner.cs" />
     <Compile Include="Managers/QuantumBridgeManager.cs" />
     <Compile Include="ModuleQuantumRelay.cs" />
+    <Compile Include="Models/QuantumRoute.cs" />
+    <Compile Include="Models/RouteKey.cs" />
     <Compile Include="PowerManager.cs" />
     <Compile Include="QuantumCommNetwork.cs" />
     <Compile Include="QuantumGatewayManager.cs" />
@@ -52,6 +57,7 @@
     <Compile Include="RelayClass.cs" />
     <Compile Include="RelayDefinition.cs" />
     <Compile Include="ReflectorDetector.cs" />
+    <Compile Include="Services/QuantumRoutingService.cs" />
     <Compile Include="WormholeScanner.cs" />
   </ItemGroup>
   <ItemGroup>

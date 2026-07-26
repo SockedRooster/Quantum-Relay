@@ -36,6 +36,7 @@ namespace QuantumRelay
             _reason = string.IsNullOrEmpty(reason) ? (_online ? "ready" : "offline") : reason;
             try { _updatedUt = Planetarium.GetUniversalTime(); } catch { _updatedUt = 0.0; }
             QuantumRelayRegistry.Publish(_gatewayA, _gatewayB, _online, _reason, true);
+            Core.QuantumManager.Instance.NotifyTopologyChanged();
         }
 
         public static void Publish(GatewayCandidate gatewayA, GatewayCandidate gatewayB, bool online, string reason)
@@ -64,6 +65,7 @@ namespace QuantumRelay
             _reason = "not running";
             _ticker = "Quantum Relay stopped.";
             _updatedUt = 0.0;
+            Core.QuantumManager.Instance.NotifyTopologyChanged();
         }
     }
 }

@@ -60,3 +60,18 @@ Leave an established link active for at least two minutes. It must remain online
 through multiple 15-second scans without returning to synchronization. Then test
 all hardware tiers and verify 25/40/60/100/125 hardware values and weakest-endpoint
 bridge values.
+
+## Version 1.5.0 — Quantum Networks
+
+Version 1.5.0 introduces the first routing-engine foundation for independent
+Debdeb and Tuun quantum networks.
+
+- Adds `QuantumManager` as the authoritative routing-state owner.
+- Adds immutable `QuantumRoute` and directional `RouteKey` models.
+- Adds route calculation and short-lived route caching.
+- Adds a routing-service facade for the future CommNet integration sprint.
+- Defines Debdeb through Kevba's Anomalies A/B.
+- Defines Tuun through Borgal's Anomalies A/B.
+
+Sprint 1 does not replace or modify stock CommNet routing. It establishes a
+compilable routing core that later integration work can call safely.
