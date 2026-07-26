@@ -255,49 +255,62 @@ namespace QuantumRelay
                 GatewayCandidate current,
                 Guid? disallowedVessel)
         {
-            if (wormhole == null ||
-                candidates == null)
-            {
+            if (wormhole == null || candidates == null)
                 return null;
-            }
 
-            // Keep a currently assigned gateway whenever it remains valid and
-            // still has a free hardware channel.
+            GatewayCandidate refreshedCurrent = null;
+
             if (current != null &&
                 current.Vessel != null &&
                 current.Wormhole != null &&
-                current.Wormhole.Body ==
-                    wormhole.Body &&
+                current.Wormhole.Body == wormhole.Body &&
                 (!disallowedVessel.HasValue ||
-                 current.Vessel.id !=
-                    disallowedVessel.Value))
+                 current.Vessel.id != disallowedVessel.Value))
             {
-                GatewayCandidate refreshed =
-                    candidates.FirstOrDefault(
-                        candidate =>
-                            candidate != null &&
-                            candidate.Vessel != null &&
-                            candidate.Vessel.id ==
-                                current.Vessel.id &&
-                            candidate.Wormhole != null &&
-                            candidate.Wormhole.Body ==
-                                wormhole.Body &&
-                            candidate.IsValid);
-
-                if (refreshed != null &&
-                    HasAvailableCapacity(
-                        refreshed,
-                        usage))
-                {
-                    return refreshed;
-                }
+                refreshedCurrent = candidates.FirstOrDefault(
+                    candidate =>
+                        candidate != null &&
+                        candidate.Vessel != null &&
+                        candidate.Vessel.id == current.Vessel.id &&
+                        candidate.Wormhole != null &&
+                        candidate.Wormhole.Body == wormhole.Body &&
+                        candidate.IsValid &&
+                        HasAvailableCapacity(candidate, usage));
             }
 
-            return SelectGateway(
+            GatewayCandidate strongest = SelectGateway(
                 candidates,
                 wormhole,
                 usage,
                 disallowedVessel);
+
+            if (refreshedCurrent == null)
+                return strongest;
+
+            if (strongest == null || SameGateway(refreshedCurrent, strongest))
+                return refreshedCurrent;
+
+            // Do not reshuffle between nearly identical gateways. A new relay
+            // must be at least five percentage points stronger before it takes
+            // ownership of the wormhole endpoint.
+            const double switchHysteresis = 0.05;
+
+            if (strongest.RelaySignalStrength >=
+                refreshedCurrent.RelaySignalStrength + switchHysteresis)
+            {
+                Debug.Log(
+                    string.Format(
+                        "[QuantumRelay] Stronger gateway selected | wormhole={0} | old={1} ({2:P0}) | new={3} ({4:P0})",
+                        wormhole.Name,
+                        refreshedCurrent.Vessel.vesselName,
+                        refreshedCurrent.RelaySignalStrength,
+                        strongest.Vessel.vesselName,
+                        strongest.RelaySignalStrength));
+
+                return strongest;
+            }
+
+            return refreshedCurrent;
         }
 
         private static GatewayCandidate SelectGateway(
@@ -318,26 +331,44 @@ namespace QuantumRelay
                         candidate != null &&
                         candidate.IsValid &&
                         candidate.Wormhole != null &&
-                        candidate.Wormhole.Body ==
-                            wormhole.Body &&
+                        candidate.Wormhole.Body == wormhole.Body &&
                         candidate.Vessel != null &&
                         (!disallowedVessel.HasValue ||
-                         candidate.Vessel.id !=
-                            disallowedVessel.Value) &&
-                        HasAvailableCapacity(
-                            candidate,
-                            usage))
-                // Prefer the vessel with the most free quantum channels.
+                         candidate.Vessel.id != disallowedVessel.Value) &&
+                        HasAvailableCapacity(candidate, usage))
+                // Quantum synchronization strength is the primary selection
+                // criterion. When a stronger official relay comes online, it
+                // becomes the active gateway automatically.
                 .OrderByDescending(
-                    candidate =>
-                        GetRemainingCapacity(
-                            candidate,
-                            usage))
-                // Use EC as the tie-breaker, preserving the previous behaviour.
+                    candidate => candidate.RelaySignalStrength)
+                // Prefer higher-tier hardware when reported strengths match.
                 .ThenByDescending(
-                    candidate =>
-                        candidate.ElectricChargeAmount)
+                    candidate => candidate.RelayTier)
+                // Preserve multi-link capacity as the next tie-breaker.
+                .ThenByDescending(
+                    candidate => GetRemainingCapacity(candidate, usage))
+                // Prefer the healthier power reserve, then the closer vessel.
+                .ThenByDescending(
+                    candidate => GetElectricChargeFraction(candidate))
+                .ThenBy(
+                    candidate => candidate.DistanceMetres)
+                .ThenBy(
+                    candidate => candidate.Vessel.id)
                 .FirstOrDefault();
+        }
+
+        private static double GetElectricChargeFraction(
+            GatewayCandidate gateway)
+        {
+            if (gateway == null || gateway.ElectricChargeCapacity <= 0.0)
+                return 0.0;
+
+            return Math.Max(
+                0.0,
+                Math.Min(
+                    1.0,
+                    gateway.ElectricChargeAmount /
+                    gateway.ElectricChargeCapacity));
         }
 
         private static bool HasAvailableCapacity(

@@ -483,6 +483,8 @@ namespace QuantumRelay
                 synchronizationController == null)
                 return;
 
+            QuantumRelayOperationalState previousState = operationalState;
+
             operationalState = stateMachine.Evaluate(
                 relayEnabled,
                 deploymentState,
@@ -492,6 +494,12 @@ namespace QuantumRelay
                 synchronizationController.IsSynchronized);
 
             persistedOperationalState = operationalState.ToString();
+
+            // Reevaluate gateway selection as soon as this relay changes state.
+            // This allows stronger restored gateways to reclaim the link without
+            // requiring the player to switch vessels first.
+            if (previousState != operationalState)
+                QuantumRelayCommands.RequestRefresh();
         }
 
         private void RefreshDiagnostics()
@@ -814,6 +822,10 @@ namespace QuantumRelay
             UpdateDisplayFields();
             UpdateEventVisibility();
             nextStatusRefreshTime = 0.0;
+
+            // Player actions such as enable, disable, extend, and retract should
+            // immediately rebuild the gateway inventory.
+            QuantumRelayCommands.RequestRefresh();
         }
     }
 }
