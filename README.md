@@ -1,48 +1,57 @@
-Quantum Relay
+# Quantum Relay — Sprint 2, Task 2.3
 
-**True CommNet Routing Through Wormholes**
+This rebuilt package is based on the current GitHub source after Task 2.2.
 
-Developed by **SockedRooster**  
-A **RoosterWorks** project  
-Version **1.0.0** - Licensed under the **MIT License**
+It does **not** contain or use a Git patch.
 
-Quantum Relay extends KSP's stock CommNet graph so communications can route through the paired Promised Worlds wormholes. A valid gateway vessel must be close to a supported anomaly, carry a probe core and CommNet hardware, have an RFL-2000 reflector deployed, and supply ElectricCharge while the link is active.
+## Apply from VS Code
 
-#Requirements
+1. Extract the ZIP anywhere, such as Downloads.
+2. Open the Quantum Relay repository in VS Code.
+3. Open a PowerShell terminal in the repository root.
+4. Run:
 
-- Kerbal Space Program 1.12.5
-- Promised Worlds
-- Near Future Exploration
+```powershell
+& "$env:USERPROFILE\Downloads\QuantumRelay_Sprint2_Task2.3_REBUILT\Apply-Task2.3.ps1"
+```
 
-#Installation
+Change the path if you extracted it somewhere else.
 
-1. Build `Source/QuantumRelay/QuantumRelay.csproj` or use the compiled release DLL.
-2. Copy the `QuantumRelay` folder into `Kerbal Space Program/GameData/`.
-3. Confirm the final path is `GameData/QuantumRelay/Plugins/QuantumRelay.dll`.
+The script uses your current terminal folder as the repository root. It creates
+a timestamped backup before changing anything.
 
-#Gateway rules
+Then build:
 
-- Within 250 km of `KevbasAnomalyA` or `KevbasAnomalyB`
-- RFL-2000 reflector antenna present and deployed
-- Probe control hardware present
-- CommNet capability present
-- 5 ElectricCharge per second consumed by each gateway while online
+```powershell
+dotnet build
+```
 
-When either reflector retracts, power is insufficient, or a gateway leaves range, the wormhole edge is removed during the stock CommNet rebuild and vessels return to their available local communication paths.
+## Direct-copy alternative
 
-#Configuration
+The two complete replacement files are under `ReplacementFiles`:
 
-Edit `GameData/QuantumRelay/QuantumRelay.cfg` to change supported wormhole names, gateway radius, scan intervals, and ElectricCharge consumption.
+- `QuantumRelayRegistry.cs`
+- `QuantumRelayMissionControl.cs`
 
-#Support and logs
+They belong in your project's `QuantumRelay` source folder.
 
-Search `KSP.log` for `[QuantumRelay]`. Include the relevant log section, KSP version, dependency versions, and reproduction steps when reporting an issue.
+`QuantumRelayGui.cs` is updated by the installer because only three focused
+sections and one helper section need to change.
 
-#License
+## Task 2.3 features
 
-Quantum Relay is copyright © 2026 RoosterWorks and is distributed under the MIT License. See `LICENSE`.
+- Saves relay model and tier in Mission Control telemetry
+- Saves operational and deployment state
+- Saves synchronization status and percentage
+- Saves relay EC draw
+- Displays relay data during flight
+- Displays last-known relay data at Space Center and Tracking Station
+- Expands Diagnostics for modern and legacy relay hardware
+- Selects the best gateway using readiness, tier, synchronization and EC reserve
+- Provides specific offline status messages
 
+## Suggested commit
 
-## v1.0.2 Interface
-
-The stock toolbar window now shows live link state, both selected gateways, hardware readiness checks, distance to each wormhole endpoint, and electric-charge reserves.
+```text
+feature: display relay hardware state in mission control
+```

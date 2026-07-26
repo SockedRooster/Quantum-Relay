@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using KSP.UI.Screens;
 using UnityEngine;
 
@@ -181,7 +181,7 @@ namespace QuantumRelay
 
             Color old = GUI.contentColor;
             GUI.contentColor = online ? Color.green : new Color(1f, 0.75f, 0.2f);
-            GUILayout.Label(online ? "â— BRIDGE ONLINE" : (QuantumRelayRegistry.HasTelemetry ? "â— LAST KNOWN: OFFLINE" : "â— AWAITING TELEMETRY"));
+            GUILayout.Label(online ? "● BRIDGE ONLINE" : (QuantumRelayRegistry.HasTelemetry ? "● LAST KNOWN: OFFLINE" : "● AWAITING TELEMETRY"));
             GUI.contentColor = old;
 
             if (!flight)
@@ -205,21 +205,10 @@ namespace QuantumRelay
             GUILayout.Label("Vessel: " + SafeName(gateway.Vessel.vesselName));
             GUILayout.Label("Endpoint: " + (gateway.Wormhole != null ? SafeName(gateway.Wormhole.Name) : "Unknown"));
             GUILayout.Label("Distance: " + FormatNumber(gateway.DistanceMetres / 1000.0) + " km");
-            DrawRelayIdentity(
-                gateway.HasQuantumRelayModule,
-                gateway.RelayModel,
-                gateway.RelayTier);
             Color old = GUI.contentColor;
             GUI.contentColor = gateway.IsValid ? Color.green : Color.yellow;
-            GUILayout.Label(gateway.IsValid ? "â— READY" : "â— WAITING");
+            GUILayout.Label(gateway.IsValid ? "● READY" : "● WAITING");
             GUI.contentColor = old;
-            DrawRelayState(
-                gateway.HasQuantumRelayModule,
-                gateway.RelayOperationalState,
-                gateway.RelayDeploymentState,
-                gateway.RelaySynchronized,
-                gateway.RelaySynchronizationFraction,
-                gateway.RelayPowerRate);
             GUILayout.Label("Electric charge: " + FormatCharge(gateway));
             GUILayout.EndVertical();
         }
@@ -239,21 +228,10 @@ namespace QuantumRelay
             GUILayout.Label("Endpoint: " + SafeName(gateway.EndpointName));
             GUILayout.Label("Location: " + SafeName(gateway.BodyName));
             GUILayout.Label("Distance: " + FormatNumber(gateway.DistanceMetres / 1000.0) + " km");
-            DrawRelayIdentity(
-                gateway.HasQuantumRelayModule,
-                gateway.RelayModel,
-                gateway.RelayTier);
             Color old = GUI.contentColor;
             GUI.contentColor = gateway.Ready ? Color.green : Color.yellow;
-            GUILayout.Label(gateway.Ready ? "â— LAST KNOWN READY" : "â— LAST KNOWN WAITING");
+            GUILayout.Label(gateway.Ready ? "● LAST KNOWN READY" : "● LAST KNOWN WAITING");
             GUI.contentColor = old;
-            DrawRelayState(
-                gateway.HasQuantumRelayModule,
-                gateway.RelayOperationalState,
-                gateway.RelayDeploymentState,
-                gateway.RelaySynchronized,
-                gateway.RelaySynchronizationFraction,
-                gateway.RelayPowerRate);
             GUILayout.Label("Electric charge: " + FormatCharge(gateway.ElectricChargeAmount, gateway.ElectricChargeCapacity));
             GUILayout.EndVertical();
         }
@@ -364,52 +342,10 @@ namespace QuantumRelay
             }
 
             GUILayout.Label("Vessel: " + SafeName(gateway.Vessel.vesselName));
-            if (gateway.HasQuantumRelayModule)
-            {
-                GUILayout.Label(
-                    StatusMark(gateway.QuantumRelayOperational) +
-                    " ModuleQuantumRelay");
-                GUILayout.Label(
-                    "Model: " + SafeName(gateway.RelayModel) +
-                    " | Tier " + gateway.RelayTier);
-                GUILayout.Label(
-                    "Operational state: " +
-                    SafeName(gateway.RelayOperationalState));
-                GUILayout.Label(
-                    "Deployment state: " +
-                    SafeName(gateway.RelayDeploymentState));
-                GUILayout.Label(
-                    StatusMark(gateway.RelaySynchronized) +
-                    " Synchronization " +
-                    FormatPercent(
-                        gateway.RelaySynchronizationFraction));
-                GUILayout.Label(
-                    "Relay power draw: " +
-                    FormatNumber(gateway.RelayPowerRate) +
-                    " EC/s");
-            }
-            else
-            {
-                GUILayout.Label(
-                    StatusMark(gateway.HasReflector) +
-                    " Legacy reflector");
-                GUILayout.Label(
-                    StatusMark(gateway.ReflectorDeployed) +
-                    " Reflector deployed");
-            }
-
-            GUILayout.Label(
-                StatusMark(gateway.HasCommNet) +
-                " CommNet hardware");
-            GUILayout.Label(
-                StatusMark(gateway.HasProbeControl) +
-                " Probe control");
-            GUILayout.Label(
-                StatusMark(gateway.HasElectricCharge) +
-                " Electric charge");
-            GUILayout.Label(
-                "Valid: " +
-                (gateway.IsValid ? "YES" : "NO"));
+            GUILayout.Label(StatusMark(gateway.HasReflector) + " RFL-2000 reflector");
+            GUILayout.Label(StatusMark(gateway.ReflectorDeployed) + " Reflector deployed");
+            GUILayout.Label(StatusMark(gateway.HasElectricCharge) + " Electric charge");
+            GUILayout.Label("Valid: " + (gateway.IsValid ? "YES" : "NO"));
             GUILayout.EndVertical();
         }
 
@@ -546,55 +482,6 @@ namespace QuantumRelay
                    HighLogic.LoadedScene == GameScenes.TRACKSTATION;
         }
 
-        private static void DrawRelayIdentity(
-            bool hasQuantumRelayModule,
-            string relayModel,
-            int relayTier)
-        {
-            if (!hasQuantumRelayModule)
-            {
-                GUILayout.Label("Hardware: Legacy reflector");
-                return;
-            }
-
-            GUILayout.Label(
-                "Hardware: " + SafeName(relayModel) +
-                " | Tier " + relayTier);
-        }
-
-        private static void DrawRelayState(
-            bool hasQuantumRelayModule,
-            string operationalState,
-            string deploymentState,
-            bool synchronized,
-            double synchronizationFraction,
-            double powerRate)
-        {
-            if (!hasQuantumRelayModule)
-                return;
-
-            GUILayout.Label(
-                "Relay state: " + SafeName(operationalState));
-            GUILayout.Label(
-                "Deployment: " + SafeName(deploymentState));
-            GUILayout.Label(
-                "Synchronization: " +
-                (synchronized
-                    ? "Synchronized"
-                    : FormatPercent(synchronizationFraction)));
-            GUILayout.Label(
-                "Relay draw: " +
-                FormatNumber(powerRate) + " EC/s");
-        }
-
-        private static string FormatPercent(double fraction)
-        {
-            double clamped =
-                Math.Max(0.0, Math.Min(1.0, fraction));
-
-            return (clamped * 100.0).ToString("0") + "%";
-        }
-
         private static string FormatCharge(GatewayCandidate gateway)
         {
             if (gateway.ElectricChargeCapacity <= 0.0) return FormatNumber(gateway.ElectricChargeAmount) + " EC";
@@ -616,4 +503,3 @@ namespace QuantumRelay
         private static string FormatNumber(double value) { return value.ToString("0.##"); }
     }
 }
-
