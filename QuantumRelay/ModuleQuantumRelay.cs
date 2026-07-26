@@ -175,7 +175,7 @@ namespace QuantumRelay
 
         public double SignalStrengthMultiplier
         {
-            get { return Math.Max(0.0, Math.Min(1.0, signalStrength)); }
+            get { return Math.Max(0.0, Math.Min(1.25, signalStrength)); }
         }
 
         public string OperationalStateName

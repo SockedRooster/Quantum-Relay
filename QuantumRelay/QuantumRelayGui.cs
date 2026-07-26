@@ -596,25 +596,18 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
             bool flightScene = HighLogic.LoadedSceneIsFlight;
             bool loaded = flightScene && available && gateway.Vessel.loaded;
 
-            GUILayout.BeginHorizontal();
-
             bool oldEnabled = GUI.enabled;
             GUI.enabled = loaded;
             if (GUILayout.Button("Focus Gateway " + label))
                 FocusGateway(gateway);
             GUI.enabled = oldEnabled;
 
-            GUI.enabled = flightScene && available;
-            if (GUILayout.Button("Track Gateway " + label))
-                TrackGateway(gateway);
-            GUI.enabled = oldEnabled;
-
-            GUILayout.EndHorizontal();
-
             if (!flightScene)
-                GUILayout.Label("Gateway navigation controls are available during flight.");
+                GUILayout.Label("Gateway focus is available during flight.");
             else if (available && !loaded)
-                GUILayout.Label("Gateway " + label + " is on rails. Use Track to locate it in Map View.");
+                GUILayout.Label(
+                    "Gateway " + label +
+                    " is on rails and cannot be focused.");
         }
 
         private void FocusGateway(GatewayCandidate gateway)
@@ -628,7 +621,7 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
             if (!gateway.Vessel.loaded)
             {
                 SetLocalStatus(SafeName(gateway.Vessel.vesselName) +
-                    " is currently on rails. Use Track to locate it in Map View.");
+                    " is currently on rails and cannot be focused.");
                 return;
             }
 
@@ -640,28 +633,6 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
             catch (Exception ex)
             {
                 SetLocalStatus("Unable to focus gateway: " + ex.Message);
-            }
-        }
-
-        private void TrackGateway(GatewayCandidate gateway)
-        {
-            if (gateway == null || gateway.Vessel == null)
-            {
-                SetLocalStatus("No gateway is available to track.");
-                return;
-            }
-
-            try
-            {
-                FlightGlobals.fetch.SetVesselTarget(gateway.Vessel);
-                if (!MapView.MapIsEnabled)
-                    MapView.EnterMapView();
-
-                SetLocalStatus("Tracking " + SafeName(gateway.Vessel.vesselName) + " in Map View.");
-            }
-            catch (Exception ex)
-            {
-                SetLocalStatus("Unable to track gateway: " + ex.Message);
             }
         }
 

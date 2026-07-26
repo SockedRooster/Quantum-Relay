@@ -432,13 +432,29 @@ namespace QuantumRelay
             if (relay == null)
                 return;
 
+            // Relay hardware fields configured in a part CFG are not normally
+            // persisted into ProtoPartModuleSnapshot.moduleValues. Use the
+            // unloaded part's prefab module as the authoritative fallback.
+            ModuleQuantumRelay prefabRelay =
+                FindPrefabRelayModule(part);
+
             result.HasQuantumRelayModule = true;
             result.HasReflector = true;
 
             bool enabled =
-                ReadProtoBool(relay, "relayEnabled", true);
+                ReadProtoBool(
+                    relay,
+                    "relayEnabled",
+                    prefabRelay != null
+                        ? prefabRelay.relayEnabled
+                        : true);
             bool requiresDeployment =
-                ReadProtoBool(relay, "requiresDeployment", true);
+                ReadProtoBool(
+                    relay,
+                    "requiresDeployment",
+                    prefabRelay != null
+                        ? prefabRelay.requiresDeployment
+                        : true);
             bool synchronized =
                 ReadProtoBool(relay, "relaySynchronized", false);
 
@@ -458,31 +474,61 @@ namespace QuantumRelay
                 ReadProtoString(
                     relay,
                     "relayModel",
-                    "Quantum Relay");
+                    prefabRelay != null
+                        ? prefabRelay.relayModel
+                        : "Quantum Relay");
 
             int tier =
                 ReadProtoInt(
                     relay,
                     "relayTier",
-                    1);
+                    prefabRelay != null
+                        ? prefabRelay.relayTier
+                        : 1);
+
+            double idlePowerRate =
+                ReadProtoDouble(
+                    relay,
+                    "idlePowerRate",
+                    prefabRelay != null
+                        ? prefabRelay.idlePowerRate
+                        : 0.02);
+
+            double synchronizationPowerRate =
+                ReadProtoDouble(
+                    relay,
+                    "synchronizationPowerRate",
+                    prefabRelay != null
+                        ? prefabRelay.synchronizationPowerRate
+                        : 1.0);
 
             double operationalPowerRate =
                 ReadProtoDouble(
                     relay,
                     "operationalPowerRate",
-                    0.0);
+                    prefabRelay != null
+                        ? prefabRelay.operationalPowerRate
+                        : 0.5);
 
             double signalStrength =
                 ReadProtoDouble(
                     relay,
                     "signalStrength",
-                    tier >= 3 ? 1.0 : (tier == 2 ? 0.6 : 0.4));
+                    prefabRelay != null
+                        ? prefabRelay.signalStrength
+                        : (tier >= 4
+                            ? 1.25
+                            : (tier >= 3
+                                ? 1.0
+                                : (tier == 2 ? 0.6 : 0.4))));
 
             string deploymentModuleName =
                 ReadProtoString(
                     relay,
                     "deploymentModuleName",
-                    QuantumRelaySettings.ReflectorModuleName);
+                    prefabRelay != null
+                        ? prefabRelay.deploymentModuleName
+                        : QuantumRelaySettings.ReflectorModuleName);
 
             QuantumRelayDeploymentState deploymentState =
                 GetUnloadedDeploymentState(
@@ -537,8 +583,29 @@ namespace QuantumRelay
                     synchronized;
                 result.RelaySynchronizationFraction =
                     synchronizationFraction;
-                result.RelayPowerRate =
-                    operational ? operationalPowerRate : 0.0;
+
+                double displayedPowerRate = 0.0;
+                if (enabled)
+                {
+                    if (operational)
+                    {
+                        displayedPowerRate = operationalPowerRate;
+                    }
+                    else if (!synchronized &&
+                             (deploymentState ==
+                                  QuantumRelayDeploymentState.Fixed ||
+                              deploymentState ==
+                                  QuantumRelayDeploymentState.Extended))
+                    {
+                        displayedPowerRate = synchronizationPowerRate;
+                    }
+                    else
+                    {
+                        displayedPowerRate = idlePowerRate;
+                    }
+                }
+
+                result.RelayPowerRate = Math.Max(0.0, displayedPowerRate);
                 result.RelayTier =
                     tier;
                 result.RelayModel =
@@ -563,6 +630,29 @@ namespace QuantumRelay
 
             result.ReflectorEvidence =
                 result.RelayHardwareEvidence;
+        }
+
+        private static ModuleQuantumRelay FindPrefabRelayModule(
+            ProtoPartSnapshot part)
+        {
+            if (part == null || string.IsNullOrEmpty(part.partName))
+                return null;
+
+            try
+            {
+                AvailablePart availablePart =
+                    PartLoader.getPartInfoByName(part.partName);
+
+                if (availablePart == null || availablePart.partPrefab == null)
+                    return null;
+
+                return availablePart.partPrefab
+                    .FindModuleImplementing<ModuleQuantumRelay>();
+            }
+            catch (Exception)
+            {
+                return null;
+            }
         }
 
         private static QuantumRelayDeploymentState
