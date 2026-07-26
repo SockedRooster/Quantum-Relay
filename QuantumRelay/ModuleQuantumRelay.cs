@@ -65,6 +65,21 @@ namespace QuantumRelay
         public double synchronizationDuration = 10.0;
 
         [KSPField]
+        public string startupStage1 = "";
+
+        [KSPField]
+        public string startupStage2 = "";
+
+        [KSPField]
+        public string startupStage3 = "";
+
+        [KSPField]
+        public string startupStage4 = "";
+
+        [KSPField]
+        public string startupComplete = "";
+
+        [KSPField]
         public double statusRefreshInterval = 0.25;
 
         [KSPField]
@@ -514,14 +529,15 @@ namespace QuantumRelay
 
             if (IsSynchronized)
             {
-                synchronizationStatus = "Synchronized";
+                synchronizationStatus = GetStartupCompleteText();
             }
             else if (
                 operationalState ==
                 QuantumRelayOperationalState.Synchronizing)
             {
                 synchronizationStatus = string.Format(
-                    "Synchronizing ({0:P0})",
+                    "{0} ({1:P0})",
+                    GetStartupStageText(SynchronizationFraction),
                     SynchronizationFraction);
             }
             else
@@ -529,6 +545,111 @@ namespace QuantumRelay
                 synchronizationStatus = string.Format(
                     "Not Synchronized ({0:P0})",
                     SynchronizationFraction);
+            }
+        }
+
+        private string GetStartupStageText(double progress)
+        {
+            if (progress < 0.25)
+                return GetStartupStage(1);
+
+            if (progress < 0.50)
+                return GetStartupStage(2);
+
+            if (progress < 0.75)
+                return GetStartupStage(3);
+
+            return GetStartupStage(4);
+        }
+
+        private string GetStartupCompleteText()
+        {
+            if (!string.IsNullOrEmpty(startupComplete))
+                return startupComplete;
+
+            switch (relayTier)
+            {
+                case 1:
+                    return "Quantum Link Established";
+
+                case 2:
+                    return "Voyager Link Established";
+
+                case 3:
+                    return "Event Horizon Stable";
+
+                default:
+                    return "Synchronized";
+            }
+        }
+
+        private string GetStartupStage(int stage)
+        {
+            string configuredStage = GetConfiguredStartupStage(stage);
+
+            if (!string.IsNullOrEmpty(configuredStage))
+                return configuredStage;
+
+            switch (relayTier)
+            {
+                case 1:
+                    switch (stage)
+                    {
+                        case 1:
+                            return "Deploying Reflector";
+                        case 2:
+                            return "Charging Capacitors";
+                        case 3:
+                            return "Calibrating Field";
+                        default:
+                            return "Synchronizing";
+                    }
+
+                case 2:
+                    switch (stage)
+                    {
+                        case 1:
+                            return "Initializing Relay";
+                        case 2:
+                            return "Charging Quantum Matrix";
+                        case 3:
+                            return "Calibrating Entanglement";
+                        default:
+                            return "Synchronizing";
+                    }
+
+                case 3:
+                    switch (stage)
+                    {
+                        case 1:
+                            return "Quantum Core Online";
+                        case 2:
+                            return "Establishing Entanglement";
+                        case 3:
+                            return "Stabilizing Event Horizon";
+                        default:
+                            return "Locking Quantum Bridge";
+                    }
+
+                default:
+                    return "Synchronizing";
+            }
+        }
+
+        private string GetConfiguredStartupStage(int stage)
+        {
+            switch (stage)
+            {
+                case 1:
+                    return startupStage1;
+                case 2:
+                    return startupStage2;
+                case 3:
+                    return startupStage3;
+                case 4:
+                    return startupStage4;
+                default:
+                    return "";
             }
         }
 
