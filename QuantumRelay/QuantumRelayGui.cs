@@ -4,7 +4,7 @@ using UnityEngine;
 
 namespace QuantumRelay
 {
-    /// <summary>v1.1 alpha 4 multi-scene toolbar, navigation, settings, diagnostics and about console.</summary>
+    /// <summary>v1.3 alpha 2 multi-scene toolbar, network overview, settings, diagnostics and about console.</summary>
     [KSPAddon(KSPAddon.Startup.EveryScene, false)]
     internal sealed class QuantumRelayGui : MonoBehaviour
     {
@@ -99,7 +99,7 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
                 ApplicationLauncher.AppScenes.SPACECENTER | ApplicationLauncher.AppScenes.TRACKSTATION,
                 _toolbarTexture);
 
-            Debug.Log("[QuantumRelay] v1.1 alpha 4 toolbar button created for Flight, Space Center and Tracking Station.");
+            Debug.Log("[QuantumRelay] v1.3 alpha 2 toolbar button created for Flight, Space Center and Tracking Station.");
         }
 
         private void OnAppLauncherDestroyed() { _button = null; }
@@ -121,7 +121,7 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
             if (!_visible) return;
             GUI.skin = HighLogic.Skin;
             _windowRect = GUILayout.Window(WindowId, _windowRect, DrawWindow,
-                "Quantum Relay v1.2 alpha 3", GUILayout.Width(WindowWidth));
+                "Quantum Relay v1.3 alpha 2", GUILayout.Width(WindowWidth));
             _windowRect.x = Mathf.Clamp(_windowRect.x, 0f, Mathf.Max(0f, Screen.width - _windowRect.width));
             _windowRect.y = Mathf.Clamp(_windowRect.y, 0f, Mathf.Max(0f, Screen.height - 36f));
             QueueWindowPositionSave();
@@ -176,6 +176,8 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
 
             if (flight)
             {
+                DrawNetworkLinks();
+                GUILayout.Space(6f);
                 DrawGatewaySummary("Gateway A", QuantumRelayRuntimeState.GatewayA);
                 GUILayout.Space(5f);
                 DrawGatewaySummary("Gateway B", QuantumRelayRuntimeState.GatewayB);
@@ -218,12 +220,14 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
 
             Color old = GUI.contentColor;
             GUI.contentColor = online ? Color.green : new Color(1f, 0.75f, 0.2f);
-            GUILayout.Label(online ? "[ONLINE] BRIDGE ONLINE" : (QuantumRelayRegistry.HasTelemetry ? "[OFFLINE] LAST KNOWN: OFFLINE" : "[WAITING] AWAITING TELEMETRY"));
+            GUILayout.Label(online ? "[ONLINE] NETWORK ONLINE" : (QuantumRelayRegistry.HasTelemetry ? "[OFFLINE] LAST KNOWN" : "[WAITING] AWAITING TELEMETRY"));
             GUI.contentColor = old;
 
             if (!flight)
                 GUILayout.Label("Last telemetry: " + QuantumRelayRegistry.AgeText());
             GUILayout.Label("Quantum link quality: " + QuantumRelaySettings.SignalQualityPercent + "%");
+            if (flight)
+                GUILayout.Label("Active wormholes: " + QuantumRelayRuntimeState.ActiveLinkCount);
 
             double gatewayAPower = GetDisplayedGatewayPowerRate(
                 flight,
@@ -246,6 +250,76 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
             GUILayout.EndVertical();
         }
 
+        private static void DrawNetworkLinks()
+        {
+            GUILayout.BeginVertical(GUI.skin.box);
+            GUILayout.Label("Quantum Wormhole Network");
+
+            System.Collections.Generic.IList<QuantumRelay.Core.ActiveQuantumLink> links =
+                QuantumRelayRuntimeState.Links;
+
+            if (links == null || links.Count == 0)
+            {
+                GUILayout.Label("No wormhole links configured.");
+                GUILayout.EndVertical();
+                return;
+            }
+
+            for (int i = 0; i < links.Count; i++)
+            {
+                QuantumRelay.Core.ActiveQuantumLink link = links[i];
+                if (link == null)
+                    continue;
+
+                if (i > 0)
+                    GUILayout.Space(4f);
+
+                Color old = GUI.contentColor;
+                GUI.contentColor = link.Online
+                    ? Color.green
+                    : new Color(1f, 0.75f, 0.2f);
+
+                GUILayout.Label(
+                    (link.Online ? "[ONLINE] " : "[OFFLINE] ") +
+                    SafeName(link.SafeDisplayName));
+                GUI.contentColor = old;
+
+                GUILayout.Label(
+                    "Route: " +
+                    GetLinkEndpointName(link.GatewayA) +
+                    " <-> " +
+                    GetLinkEndpointName(link.GatewayB));
+
+                GUILayout.Label(
+                    "Gateways: " +
+                    GetLinkVesselName(link.GatewayA) +
+                    " <-> " +
+                    GetLinkVesselName(link.GatewayB));
+
+                GUILayout.Label(
+                    "State: " +
+                    (string.IsNullOrEmpty(link.Reason)
+                        ? (link.Online ? "ready" : "offline")
+                        : link.Reason));
+            }
+
+            GUILayout.EndVertical();
+        }
+
+        private static string GetLinkEndpointName(GatewayCandidate gateway)
+        {
+            return gateway != null && gateway.Wormhole != null
+                ? SafeName(gateway.Wormhole.Name)
+                : "Unassigned";
+        }
+
+        private static string GetLinkVesselName(GatewayCandidate gateway)
+        {
+            return gateway != null && gateway.Vessel != null
+                ? SafeName(gateway.Vessel.vesselName)
+                : "No gateway";
+        }
+
         private static void DrawGatewaySummary(string heading, GatewayCandidate gateway)
         {
             GUILayout.BeginVertical(GUI.skin.box);
@@ -266,7 +340,7 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
                 gateway.RelayTier);
             Color old = GUI.contentColor;
             GUI.contentColor = gateway.IsValid ? Color.green : Color.yellow;
-            GUILayout.Label(gateway.IsValid ? "[READY] READY" : "[WAITING] WAITING");
+            GUILayout.Label(gateway.IsValid ? "[READY]" : "[WAITING]");
             GUI.contentColor = old;
             DrawRelayState(
                 gateway.HasQuantumRelayModule,
@@ -300,7 +374,7 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
                 gateway.RelayTier);
             Color old = GUI.contentColor;
             GUI.contentColor = gateway.Ready ? Color.green : Color.yellow;
-            GUILayout.Label(gateway.Ready ? "[READY] LAST KNOWN READY" : "[WAITING] LAST KNOWN WAITING");
+            GUILayout.Label(gateway.Ready ? "[READY] LAST KNOWN" : "[WAITING] LAST KNOWN");
             GUI.contentColor = old;
             DrawRelayState(
                 gateway.HasQuantumRelayModule,
@@ -427,7 +501,7 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
                 FormatNumber(gatewayAPower + gatewayBPower) +
                 " EC/s");
             GUILayout.Label("Last state update UT: " + FormatNumber(QuantumRelayRuntimeState.UpdatedUt));
-            GUILayout.Label("Version: 1.2 alpha 3");
+            GUILayout.Label("Version: " + QuantumRelayConstants.DisplayVersion);
             GUILayout.Label("Registry telemetry: " + (QuantumRelayRegistry.HasTelemetry ? "AVAILABLE" : "NONE"));
             GUILayout.Label("Registry age: " + QuantumRelayRegistry.AgeText());
             GUILayout.Space(5f);
@@ -502,13 +576,13 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
         {
             GUILayout.BeginVertical(GUI.skin.box);
             GUILayout.Label("Quantum Relay");
-            GUILayout.Label("Version 1.2 alpha 3");
+            GUILayout.Label("Version " + QuantumRelayConstants.DisplayVersion);
             GUILayout.Space(6f);
             GUILayout.Label("Developed by SockedRooster");
             GUILayout.Label("RoosterWorks");
             GUILayout.Label("MIT License");
             GUILayout.Space(8f);
-            GUILayout.Label("True stock CommNet routing through the Promised Worlds wormhole pair.");
+            GUILayout.Label("True stock CommNet routing through multiple Promised Worlds wormhole pairs.");
             GUILayout.Space(8f);
             GUILayout.Label("Built for Kerbal Space Program 1.12.5");
             GUILayout.EndVertical();

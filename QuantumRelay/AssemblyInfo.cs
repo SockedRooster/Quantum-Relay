@@ -2,7 +2,7 @@ using System.Reflection;
 using System.Runtime.InteropServices;
 
 [assembly: AssemblyTitle("Quantum Relay")]
-[assembly: AssemblyDescription("True stock CommNet routing through Promised Worlds wormholes")]
+[assembly: AssemblyDescription("True stock CommNet routing through multiple Promised Worlds wormholes")]
 [assembly: AssemblyConfiguration("")]
 [assembly: AssemblyCompany("RoosterWorks")]
 [assembly: AssemblyProduct("Quantum Relay")]
