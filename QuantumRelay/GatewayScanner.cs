@@ -27,6 +27,7 @@ namespace QuantumRelay
         public double RelayPowerRate { get; set; }
         public int RelayTier { get; set; }
         public string RelayModel { get; set; }
+        public double RelaySignalStrength { get; set; }
         public string RelayHardwareEvidence { get; set; }
 
         // Vessel diagnostics retained for legacy hardware and UI reporting.
@@ -99,6 +100,7 @@ namespace QuantumRelay
                     RelayPowerRate,
                     RelayTier,
                     RelayModel ?? string.Empty,
+                    RelaySignalStrength,
                     HasReflector,
                     ReflectorDeployed,
                     HasCommNet,
@@ -333,13 +335,15 @@ namespace QuantumRelay
                     relay.relayTier;
                 result.RelayModel =
                     relay.relayModel;
+                result.RelaySignalStrength =
+                    relay.SignalStrengthMultiplier;
             }
 
             result.RelayHardwareEvidence = string.Format(
                 "ModuleQuantumRelay; model={0}; tier={1}; " +
                 "enabled={2}; deployment={3}; state={4}; " +
                 "synchronized={5}; synchronization={6:P0}; " +
-                "powerRate={7:N2} EC/s",
+                "powerRate={7:N2} EC/s; signal={8:P0}",
                 relay.relayModel,
                 relay.relayTier,
                 relay.relayEnabled,
@@ -347,7 +351,8 @@ namespace QuantumRelay
                 relay.OperationalStateName,
                 relay.IsSynchronized,
                 relay.SynchronizationFraction,
-                relay.CurrentPowerRate);
+                relay.CurrentPowerRate,
+                relay.SignalStrengthMultiplier);
 
             result.ReflectorEvidence =
                 result.RelayHardwareEvidence;
@@ -467,6 +472,12 @@ namespace QuantumRelay
                     "operationalPowerRate",
                     0.0);
 
+            double signalStrength =
+                ReadProtoDouble(
+                    relay,
+                    "signalStrength",
+                    tier >= 3 ? 1.0 : (tier == 2 ? 0.6 : 0.4));
+
             string deploymentModuleName =
                 ReadProtoString(
                     relay,
@@ -532,6 +543,8 @@ namespace QuantumRelay
                     tier;
                 result.RelayModel =
                     model;
+                result.RelaySignalStrength =
+                    Math.Max(0.0, Math.Min(1.0, signalStrength));
             }
 
             result.RelayHardwareEvidence = string.Format(

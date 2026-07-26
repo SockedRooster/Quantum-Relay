@@ -1,8 +1,0 @@
-C:\Users\rida6\Projects\QuantumRelay\GameData\QuantumRelay\Plugins\QuantumRelay.dll
-C:\Users\rida6\Projects\QuantumRelay\GameData\QuantumRelay\Plugins\QuantumRelay.pdb
-C:\Users\rida6\Projects\QuantumRelay\Quantum-Relay\QuantumRelay\obj\Debug\QuantumRelay.csproj.AssemblyReference.cache
-C:\Users\rida6\Projects\QuantumRelay\Quantum-Relay\QuantumRelay\obj\Debug\QuantumRelay.GeneratedMSBuildEditorConfig.editorconfig
-C:\Users\rida6\Projects\QuantumRelay\Quantum-Relay\QuantumRelay\obj\Debug\QuantumRelay.csproj.CoreCompileInputs.cache
-C:\Users\rida6\Projects\QuantumRelay\Quantum-Relay\QuantumRelay\obj\Debug\QuantumRelay.sourcelink.json
-C:\Users\rida6\Projects\QuantumRelay\Quantum-Relay\QuantumRelay\obj\Debug\QuantumRelay.dll
-C:\Users\rida6\Projects\QuantumRelay\Quantum-Relay\QuantumRelay\obj\Debug\QuantumRelay.pdb

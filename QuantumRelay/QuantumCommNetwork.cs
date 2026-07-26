@@ -25,7 +25,8 @@ namespace QuantumRelay
                 // percentage participate naturally in CommNet path quality and
                 // science-transmission calculations.
                 CommLink link = Connect(a, b, 1E-07);
-                double quality = QuantumRelaySettings.SignalQualityMultiplier;
+                double quality = QuantumGatewayManager.GetPairSignalQuality(a, b);
+                if (quality <= 0.0) quality = QuantumRelaySettings.SignalQualityMultiplier;
                 link.strengthRR = quality;
                 link.strengthAR = quality;
                 link.strengthBR = quality;
@@ -38,7 +39,7 @@ namespace QuantumRelay
             {
                 _lastQuantumPairConnected = connected;
                 Debug.Log("[QuantumRelay] Quantum graph edge " + (connected ? "CONNECTED" : "FAILED") +
-                          " | quality=" + QuantumRelaySettings.SignalQualityPercent + "%");
+                          " | quality=" + (QuantumGatewayManager.GetPairSignalQuality(a, b) * 100.0).ToString("N0") + "%");
             }
             return connected;
         }

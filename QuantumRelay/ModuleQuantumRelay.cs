@@ -22,6 +22,7 @@ namespace QuantumRelay
 
         private bool hasCommNetHardware;
         private double nextStatusRefreshTime;
+        private double hardwareNotReadySince = -1.0;
 
         // Existing persistent field retained for save/config compatibility.
         [KSPField(isPersistant = true)]
@@ -63,6 +64,12 @@ namespace QuantumRelay
 
         [KSPField]
         public double synchronizationDuration = 10.0;
+
+        [KSPField]
+        public double signalStrength = 1.0;
+
+        [KSPField]
+        public double deploymentLossGracePeriod = 2.0;
 
         [KSPField]
         public string startupStage1 = "";
@@ -161,6 +168,11 @@ namespace QuantumRelay
         public bool HasCommNetHardware
         {
             get { return hasCommNetHardware; }
+        }
+
+        public double SignalStrengthMultiplier
+        {
+            get { return Math.Max(0.0, Math.Min(1.0, signalStrength)); }
         }
 
         public string OperationalStateName
@@ -365,8 +377,23 @@ namespace QuantumRelay
                 deploymentState == QuantumRelayDeploymentState.Fixed ||
                 deploymentState == QuantumRelayDeploymentState.Extended;
 
-            if (!hardwareReady && resetSynchronizationWhenRetracted)
-                ResetSynchronization();
+            // Some third-party deployable reflector modules briefly report an
+            // indeterminate or retracted state while updating their animation.
+            // Debounce that transient state so a healthy relay does not drop and
+            // restart synchronization every few seconds.
+            if (hardwareReady)
+            {
+                hardwareNotReadySince = -1.0;
+            }
+            else if (resetSynchronizationWhenRetracted)
+            {
+                if (hardwareNotReadySince < 0.0)
+                    hardwareNotReadySince = Time.time;
+
+                double grace = Math.Max(0.0, deploymentLossGracePeriod);
+                if (Time.time - hardwareNotReadySince >= grace)
+                    ResetSynchronization();
+            }
 
             QuantumRelayOperationalState prePowerState =
                 stateMachine.Evaluate(

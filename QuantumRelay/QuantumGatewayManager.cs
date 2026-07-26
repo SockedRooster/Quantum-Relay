@@ -20,6 +20,7 @@ namespace QuantumRelay
             public CommNode NodeB;
             public Guid VesselA;
             public Guid VesselB;
+            public double SignalQuality;
         }
 
         private static readonly List<GatewayPair> _pairs = new List<GatewayPair>();
@@ -49,7 +50,8 @@ namespace QuantumRelay
                         NodeA = nodeA,
                         NodeB = nodeB,
                         VesselA = link.GatewayA.Vessel.id,
-                        VesselB = link.GatewayB.Vessel.id
+                        VesselB = link.GatewayB.Vessel.id,
+                        SignalQuality = GetLinkSignalQuality(link)
                     });
                 }
             }
@@ -91,6 +93,36 @@ namespace QuantumRelay
             return false;
         }
 
+        public static double GetPairSignalQuality(CommNode a, CommNode b)
+        {
+            if (a == null || b == null) return 0.0;
+            for (int i = 0; i < _pairs.Count; i++)
+            {
+                GatewayPair pair = _pairs[i];
+                if ((ReferenceEquals(a, pair.NodeA) && ReferenceEquals(b, pair.NodeB)) ||
+                    (ReferenceEquals(a, pair.NodeB) && ReferenceEquals(b, pair.NodeA)))
+                    return pair.SignalQuality;
+            }
+            return 0.0;
+        }
+
+        private static double GetLinkSignalQuality(ActiveQuantumLink link)
+        {
+            // A bridge is limited by its weaker endpoint. This gives the three
+            // reflector tiers meaningful network quality while allowing mixed
+            // tier links without overstating their capability.
+            double a = link.GatewayA != null ? link.GatewayA.RelaySignalStrength : 0.0;
+            double b = link.GatewayB != null ? link.GatewayB.RelaySignalStrength : 0.0;
+            if (a <= 0.0) a = TierSignal(link.GatewayA != null ? link.GatewayA.RelayTier : 1);
+            if (b <= 0.0) b = TierSignal(link.GatewayB != null ? link.GatewayB.RelayTier : 1);
+            return Math.Max(0.0, Math.Min(1.0, Math.Min(a, b)));
+        }
+
+        private static double TierSignal(int tier)
+        {
+            return tier >= 3 ? 1.0 : (tier == 2 ? 0.6 : 0.4);
+        }
+
         public static void Clear()
         {
             if (_pairs.Count == 0) return;
@@ -111,7 +143,8 @@ namespace QuantumRelay
                 {
                     GatewayPair b = next[j];
                     if (string.Equals(a.Id, b.Id, StringComparison.Ordinal) &&
-                        a.VesselA == b.VesselA && a.VesselB == b.VesselB)
+                        a.VesselA == b.VesselA && a.VesselB == b.VesselB &&
+                        Math.Abs(a.SignalQuality - b.SignalQuality) < 0.0001)
                     {
                         found = true;
                         break;
