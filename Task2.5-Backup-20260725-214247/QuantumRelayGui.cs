@@ -121,7 +121,7 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
             if (!_visible) return;
             GUI.skin = HighLogic.Skin;
             _windowRect = GUILayout.Window(WindowId, _windowRect, DrawWindow,
-                "Quantum Relay v1.2 alpha 3", GUILayout.Width(WindowWidth));
+                "Quantum Relay v1.2 alpha 2", GUILayout.Width(WindowWidth));
             _windowRect.x = Mathf.Clamp(_windowRect.x, 0f, Mathf.Max(0f, Screen.width - _windowRect.width));
             _windowRect.y = Mathf.Clamp(_windowRect.y, 0f, Mathf.Max(0f, Screen.height - 36f));
             QueueWindowPositionSave();
@@ -218,31 +218,13 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
 
             Color old = GUI.contentColor;
             GUI.contentColor = online ? Color.green : new Color(1f, 0.75f, 0.2f);
-            GUILayout.Label(online ? "Ã¢â€”Â BRIDGE ONLINE" : (QuantumRelayRegistry.HasTelemetry ? "Ã¢â€”Â LAST KNOWN: OFFLINE" : "Ã¢â€”Â AWAITING TELEMETRY"));
+            GUILayout.Label(online ? "â— BRIDGE ONLINE" : (QuantumRelayRegistry.HasTelemetry ? "â— LAST KNOWN: OFFLINE" : "â— AWAITING TELEMETRY"));
             GUI.contentColor = old;
 
             if (!flight)
                 GUILayout.Label("Last telemetry: " + QuantumRelayRegistry.AgeText());
             GUILayout.Label("Quantum link quality: " + QuantumRelaySettings.SignalQualityPercent + "%");
-
-            double gatewayAPower = GetDisplayedGatewayPowerRate(
-                flight,
-                true);
-            double gatewayBPower = GetDisplayedGatewayPowerRate(
-                flight,
-                false);
-            double totalPower = gatewayAPower + gatewayBPower;
-
-            GUILayout.Label(
-                "Live relay draw: " +
-                FormatNumber(totalPower) +
-                " EC/s total");
-            GUILayout.Label(
-                "Gateway A: " +
-                FormatNumber(gatewayAPower) +
-                " EC/s | Gateway B: " +
-                FormatNumber(gatewayBPower) +
-                " EC/s");
+            GUILayout.Label("Power requirement: " + FormatNumber(QuantumRelaySettings.ElectricChargePerSecondPerGateway * 2.0) + " EC/s total");
             GUILayout.EndVertical();
         }
 
@@ -266,7 +248,7 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
                 gateway.RelayTier);
             Color old = GUI.contentColor;
             GUI.contentColor = gateway.IsValid ? Color.green : Color.yellow;
-            GUILayout.Label(gateway.IsValid ? "Ã¢â€”Â READY" : "Ã¢â€”Â WAITING");
+            GUILayout.Label(gateway.IsValid ? "â— READY" : "â— WAITING");
             GUI.contentColor = old;
             DrawRelayState(
                 gateway.HasQuantumRelayModule,
@@ -300,7 +282,7 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
                 gateway.RelayTier);
             Color old = GUI.contentColor;
             GUI.contentColor = gateway.Ready ? Color.green : Color.yellow;
-            GUILayout.Label(gateway.Ready ? "Ã¢â€”Â LAST KNOWN READY" : "Ã¢â€”Â LAST KNOWN WAITING");
+            GUILayout.Label(gateway.Ready ? "â— LAST KNOWN READY" : "â— LAST KNOWN WAITING");
             GUI.contentColor = old;
             DrawRelayState(
                 gateway.HasQuantumRelayModule,
@@ -395,39 +377,9 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
             GUILayout.Label("Gateway pair active: " + (QuantumGatewayManager.Active ? "YES" : "NO"));
             GUILayout.Label("Configured signal quality: " + QuantumRelaySettings.SignalQualityPercent + "%");
             GUILayout.Label("Gateway radius: " + FormatNumber(QuantumRelaySettings.GatewayRadiusMetres / 1000.0) + " km");
-            double gatewayAPower =
-                QuantumRelayRuntimeState.GatewayA != null
-                    ? Math.Max(
-                        0.0,
-                        QuantumRelayRuntimeState.GatewayA.RelayPowerRate)
-                    : 0.0;
-            double gatewayBPower =
-                QuantumRelayRuntimeState.GatewayB != null
-                    ? Math.Max(
-                        0.0,
-                        QuantumRelayRuntimeState.GatewayB.RelayPowerRate)
-                    : 0.0;
-
-            GUILayout.Label(
-                "Configured fallback power: " +
-                FormatNumber(
-                    QuantumRelaySettings
-                        .ElectricChargePerSecondPerGateway) +
-                " EC/s");
-            GUILayout.Label(
-                "Gateway A live draw: " +
-                FormatNumber(gatewayAPower) +
-                " EC/s");
-            GUILayout.Label(
-                "Gateway B live draw: " +
-                FormatNumber(gatewayBPower) +
-                " EC/s");
-            GUILayout.Label(
-                "Combined live draw: " +
-                FormatNumber(gatewayAPower + gatewayBPower) +
-                " EC/s");
+            GUILayout.Label("Power per gateway: " + FormatNumber(QuantumRelaySettings.ElectricChargePerSecondPerGateway) + " EC/s");
             GUILayout.Label("Last state update UT: " + FormatNumber(QuantumRelayRuntimeState.UpdatedUt));
-            GUILayout.Label("Version: 1.2 alpha 3");
+            GUILayout.Label("Version: 1.2 alpha 2");
             GUILayout.Label("Registry telemetry: " + (QuantumRelayRegistry.HasTelemetry ? "AVAILABLE" : "NONE"));
             GUILayout.Label("Registry age: " + QuantumRelayRegistry.AgeText());
             GUILayout.Space(5f);
@@ -502,7 +454,7 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
         {
             GUILayout.BeginVertical(GUI.skin.box);
             GUILayout.Label("Quantum Relay");
-            GUILayout.Label("Version 1.2 alpha 3");
+            GUILayout.Label("Version 1.2 alpha 2");
             GUILayout.Space(6f);
             GUILayout.Label("Developed by SockedRooster");
             GUILayout.Label("RoosterWorks");
@@ -631,31 +583,6 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
                    HighLogic.LoadedScene == GameScenes.TRACKSTATION;
         }
 
-        private static double GetDisplayedGatewayPowerRate(
-            bool flight,
-            bool gatewayA)
-        {
-            if (flight)
-            {
-                GatewayCandidate gateway =
-                    gatewayA
-                        ? QuantumRelayRuntimeState.GatewayA
-                        : QuantumRelayRuntimeState.GatewayB;
-
-                return gateway != null
-                    ? Math.Max(0.0, gateway.RelayPowerRate)
-                    : 0.0;
-            }
-
-            GatewayTelemetry telemetry =
-                gatewayA
-                    ? QuantumRelayRegistry.GatewayA
-                    : QuantumRelayRegistry.GatewayB;
-
-            return telemetry != null && telemetry.IsKnown
-                ? Math.Max(0.0, telemetry.RelayPowerRate)
-                : 0.0;
-        }
         private static void DrawRelayIdentity(
             bool hasQuantumRelayModule,
             string relayModel,

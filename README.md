@@ -1,21 +1,52 @@
-# Quantum Relay — Sprint 2, Task 2.3.1 Stability
+# Quantum Relay — Sprint 2, Task 2.5
 
-This package does not use a Git patch. It safely edits the current local source
-and creates timestamped backups first.
+## Live relay power telemetry
+
+The QR-100 correctly consumes its configured ElectricCharge, and the individual
+gateway card already receives its live relay power rate. However, the bridge
+header and diagnostics monitor still display the legacy global power setting.
+
+This patch changes those displays to use the actual selected gateway telemetry.
+
+## Changes
+
+### Bridge header
+
+Replaces the static global estimate with:
+
+```text
+Live relay draw: 15 EC/s total
+Gateway A: 7.5 EC/s | Gateway B: 7.5 EC/s
+```
+
+The displayed values follow each relay's current state. A disabled, retracted,
+or otherwise idle relay can therefore show a lower draw than an operational
+relay.
+
+### Diagnostics
+
+Adds:
+
+```text
+Configured fallback power
+Gateway A live draw
+Gateway B live draw
+Combined live draw
+```
+
+The fallback value is retained for legacy reflector compatibility.
+
+### Version
+
+Updates the interface label from `v1.2 alpha 2` to `v1.2 alpha 3`.
 
 ## Apply
 
-Extract the ZIP. Open a PowerShell terminal in the repository root, then run the
-script using its actual extracted path.
-
-Example:
+Extract the ZIP. Open PowerShell in the repository root and run:
 
 ```powershell
-& "D:\Downloads\QuantumRelay_Sprint2_Task2.3.1_Stability\Apply-Task2.3.1.ps1"
+& "FULL\PATH\TO\QuantumRelay_Sprint2_Task2.5_LivePowerTelemetry\Apply-Task2.5.ps1"
 ```
-
-Because the terminal is open in the repository root, the script automatically
-uses the correct project location.
 
 Then build:
 
@@ -23,54 +54,25 @@ Then build:
 dotnet build
 ```
 
-Copy the new DLL to:
+Replace the installed DLL:
 
 ```text
-Kerbal Space Program\GameData\QuantumRelay\Plugins\QuantumRelay.dll
+GameData\QuantumRelay\Plugins\QuantumRelay.dll
 ```
-
-## Changes
-
-### QuantumRelayGui
-
-- Immediately disables itself in unsupported scenes, including the main menu.
-- Does not subscribe to toolbar events in unsupported scenes.
-- Tracks whether toolbar events were registered.
-- Cleans up the toolbar button and event subscriptions safely.
-- Stops drawing immediately during scene transitions.
-- Logs startup and destruction by scene.
-
-### QuantumRelayMissionControl
-
-- Immediately disables itself outside Space Center and Tracking Station.
-- Logs startup and destruction by scene.
-
-### QuantumRelayBootstrap
-
-- Prevents duplicate event registration.
-- Prevents duplicate event removal.
-- Logs flight lifecycle startup and destruction.
-
-## Important
-
-The uploaded KSP log points to an EVE main-menu cloud-handler exception rather
-than a Quantum Relay exception. This update isolates Quantum Relay from the
-main-menu lifecycle, but it may not eliminate a grey screen caused inside EVE.
 
 ## Test
 
-1. Launch KSP and load the affected save.
-2. Confirm the Quantum Relay toolbar and UI still work in flight.
-3. Visit Space Center and Tracking Station.
-4. Return to the main menu.
-5. Check `KSP.log` for:
-   - `GUI disabled for unsupported scene`
-   - `Mission Control disabled for unsupported scene`
-   - `Flight bootstrap destroyed`
-6. Note whether the grey screen still occurs.
+1. Load a flight containing the QR-100.
+2. Open Quantum Relay.
+3. Confirm the bridge header displays the QR-100's actual live draw.
+4. Open Diagnostics.
+5. Confirm Gateway A/B and combined draw values are shown.
+6. Retract or disable the relay.
+7. Confirm the displayed live draw changes with the relay state.
+8. Confirm the vessel battery continues dropping while the relay is drawing EC.
 
 ## Suggested commit
 
 ```text
-fix: isolate relay components during scene transitions
+fix: display live relay EC draw in systems monitor
 ```
