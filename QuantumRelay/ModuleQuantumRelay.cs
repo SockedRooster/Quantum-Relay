@@ -69,6 +69,9 @@ namespace QuantumRelay
         public double signalStrength = 1.0;
 
         [KSPField]
+        public int maxWormholes = 1;
+
+        [KSPField]
         public double deploymentLossGracePeriod = 2.0;
 
         [KSPField]
@@ -607,6 +610,9 @@ namespace QuantumRelay
                 case 3:
                     return "Event Horizon Stable";
 
+                case 4:
+                    return "Horizon Prime Network Stable";
+
                 default:
                     return "Synchronized";
             }
@@ -658,6 +664,19 @@ namespace QuantumRelay
                             return "Stabilizing Event Horizon";
                         default:
                             return "Locking Quantum Bridge";
+                    }
+
+                case 4:
+                    switch (stage)
+                    {
+                        case 1:
+                            return "Horizon Prime Core Online";
+                        case 2:
+                            return "Harmonizing Quantum Bands";
+                        case 3:
+                            return "Stabilizing Entanglement Lattice";
+                        default:
+                            return "Opening Prime Bridge";
                     }
 
                 default:

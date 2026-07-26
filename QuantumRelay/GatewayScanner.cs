@@ -544,7 +544,7 @@ namespace QuantumRelay
                 result.RelayModel =
                     model;
                 result.RelaySignalStrength =
-                    Math.Max(0.0, Math.Min(1.0, signalStrength));
+                    Math.Max(0.0, Math.Min(1.25, signalStrength));
             }
 
             result.RelayHardwareEvidence = string.Format(

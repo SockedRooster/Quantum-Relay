@@ -12,20 +12,14 @@ namespace QuantumRelay
     /// </summary>
     internal static class QuantumRelaySettings
     {
-        public const int DefaultSignalQualityPercent = QuantumRelayConstants.DefaultSignalQualityPercent;
         public const double DefaultGatewayRadiusMetres = QuantumRelayConstants.DefaultGatewayRadiusMetres;
-        public const double DefaultElectricChargePerSecondPerGateway = QuantumRelayConstants.DefaultElectricChargePerSecondPerGateway;
 
-        public static int SignalQualityPercent { get; private set; } = DefaultSignalQualityPercent;
         public static double GatewayRadiusMetres { get; private set; } = DefaultGatewayRadiusMetres;
-        public static double ElectricChargePerSecondPerGateway { get; private set; } = DefaultElectricChargePerSecondPerGateway;
         public static bool AutoRebuildCommNet { get; private set; } = true;
         public static bool ShowScreenMessages { get; private set; } = true;
         public static bool DebugLogging { get; private set; }
         public static float WindowX { get; private set; } = 260f;
         public static float WindowY { get; private set; } = 100f;
-
-        public static double SignalQualityMultiplier => SignalQualityPercent / 100.0;
 
         // Expensive work is deliberately slow and event-driven.
         public const double FullGatewayScanIntervalSeconds = 15.0;
@@ -74,18 +68,15 @@ namespace QuantumRelay
                     return;
                 }
 
-                SignalQualityPercent = SanitizeSignal(ReadInt(node, "signalQualityPercent", DefaultSignalQualityPercent));
                 GatewayRadiusMetres = SanitizeRadius(ReadDouble(node, "gatewayRadiusMetres", DefaultGatewayRadiusMetres));
-                ElectricChargePerSecondPerGateway = SanitizePower(ReadDouble(node, "electricChargePerSecondPerGateway", DefaultElectricChargePerSecondPerGateway));
                 AutoRebuildCommNet = ReadBool(node, "autoRebuildCommNet", true);
                 ShowScreenMessages = ReadBool(node, "showScreenMessages", true);
                 DebugLogging = ReadBool(node, "debugLogging", false);
                 WindowX = ReadFloat(node, "windowX", 260f);
                 WindowY = ReadFloat(node, "windowY", 100f);
 
-                Debug.Log("[QuantumRelay] Settings loaded | signal=" + SignalQualityPercent +
-                          "% | radius=" + GatewayRadiusMetres.ToString("0", CultureInfo.InvariantCulture) +
-                          "m | power=" + ElectricChargePerSecondPerGateway.ToString("0.##", CultureInfo.InvariantCulture) + " EC/s");
+                Debug.Log("[QuantumRelay] Settings loaded | radius=" +
+                          GatewayRadiusMetres.ToString("0", CultureInfo.InvariantCulture) + "m");
             }
             catch (Exception ex)
             {
@@ -94,17 +85,13 @@ namespace QuantumRelay
             }
         }
 
-        public static bool Apply(int signalQualityPercent, double radiusMetres, double powerPerGateway,
-            bool autoRebuild, bool showMessages, bool debugLogging, bool save)
+        public static bool Apply(double radiusMetres, bool autoRebuild,
+            bool showMessages, bool debugLogging, bool save)
         {
-            int oldSignal = SignalQualityPercent;
             double oldRadius = GatewayRadiusMetres;
-            double oldPower = ElectricChargePerSecondPerGateway;
             bool oldAuto = AutoRebuildCommNet;
 
-            SignalQualityPercent = SanitizeSignal(signalQualityPercent);
             GatewayRadiusMetres = SanitizeRadius(radiusMetres);
-            ElectricChargePerSecondPerGateway = SanitizePower(powerPerGateway);
             AutoRebuildCommNet = autoRebuild;
             ShowScreenMessages = showMessages;
             DebugLogging = debugLogging;
@@ -112,17 +99,13 @@ namespace QuantumRelay
             if (save)
                 Save();
 
-            return oldSignal != SignalQualityPercent ||
-                   Math.Abs(oldRadius - GatewayRadiusMetres) > 0.01 ||
-                   Math.Abs(oldPower - ElectricChargePerSecondPerGateway) > 0.001 ||
+            return Math.Abs(oldRadius - GatewayRadiusMetres) > 0.01 ||
                    oldAuto != AutoRebuildCommNet;
         }
 
         public static void ResetDefaults(bool save)
         {
-            SignalQualityPercent = DefaultSignalQualityPercent;
             GatewayRadiusMetres = DefaultGatewayRadiusMetres;
-            ElectricChargePerSecondPerGateway = DefaultElectricChargePerSecondPerGateway;
             AutoRebuildCommNet = true;
             ShowScreenMessages = true;
             DebugLogging = false;
@@ -140,9 +123,7 @@ namespace QuantumRelay
                     Directory.CreateDirectory(directory);
 
                 ConfigNode node = new ConfigNode("QUANTUM_RELAY_SETTINGS");
-                node.AddValue("signalQualityPercent", SignalQualityPercent);
                 node.AddValue("gatewayRadiusMetres", GatewayRadiusMetres.ToString("0", CultureInfo.InvariantCulture));
-                node.AddValue("electricChargePerSecondPerGateway", ElectricChargePerSecondPerGateway.ToString("0.##", CultureInfo.InvariantCulture));
                 node.AddValue("autoRebuildCommNet", AutoRebuildCommNet);
                 node.AddValue("showScreenMessages", ShowScreenMessages);
                 node.AddValue("debugLogging", DebugLogging);
@@ -164,21 +145,10 @@ namespace QuantumRelay
             Save();
         }
 
-        private static int SanitizeSignal(int value)
-        {
-            value = Math.Max(10, Math.Min(100, value));
-            return (int)Math.Round(value / 10.0, MidpointRounding.AwayFromZero) * 10;
-        }
-
         private static double SanitizeRadius(double value)
         {
             value = Math.Max(100000.0, Math.Min(500000.0, value));
             return Math.Round(value / 25000.0, MidpointRounding.AwayFromZero) * 25000.0;
-        }
-
-        private static double SanitizePower(double value)
-        {
-            return Math.Max(0.0, Math.Min(50.0, Math.Round(value, 1)));
         }
 
         private static int ReadInt(ConfigNode node, string key, int fallback)

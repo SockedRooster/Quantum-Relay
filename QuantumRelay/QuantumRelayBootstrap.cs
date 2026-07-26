@@ -95,38 +95,77 @@ namespace QuantumRelay
 
         private void BuildLinks()
         {
-            _links.Clear();
             List<QuantumBridge> definitions = GetEffectiveBridgeDefinitions();
+            List<ActiveQuantumLink> next = new List<ActiveQuantumLink>();
             HashSet<Guid> reservedGateways = new HashSet<Guid>();
 
             foreach (QuantumBridge definition in definitions)
             {
                 if (definition == null || !definition.Enabled) continue;
 
+                string id = string.IsNullOrEmpty(definition.Name)
+                    ? definition.GatewayA + "::" + definition.GatewayB
+                    : definition.Name;
+                ActiveQuantumLink existing = _links.FirstOrDefault(l =>
+                    l != null && string.Equals(l.Id, id, StringComparison.Ordinal));
+
                 WormholeInfo endA = FindWormhole(definition.GatewayA);
                 WormholeInfo endB = FindWormhole(definition.GatewayB);
-                ActiveQuantumLink link = new ActiveQuantumLink
+                GatewayCandidate selectedA = SelectPreferredGateway(
+                    _candidateCache, endA, reservedGateways,
+                    existing != null ? existing.GatewayA : null);
+                if (selectedA != null) reservedGateways.Add(selectedA.Vessel.id);
+
+                GatewayCandidate selectedB = SelectPreferredGateway(
+                    _candidateCache, endB, reservedGateways,
+                    existing != null ? existing.GatewayB : null);
+                if (selectedB != null) reservedGateways.Add(selectedB.Vessel.id);
+
+                ActiveQuantumLink link = existing ?? new ActiveQuantumLink();
+                bool sameGateways = existing != null && SameGateway(existing.GatewayA, selectedA) &&
+                                    SameGateway(existing.GatewayB, selectedB);
+                link.Id = id;
+                link.DisplayName = string.IsNullOrEmpty(definition.DisplayName)
+                    ? definition.Name : definition.DisplayName;
+                link.GatewayA = selectedA;
+                link.GatewayB = selectedB;
+
+                // A healthy unchanged link survives the periodic discovery scan.
+                // New or genuinely changed endpoint selections are validated by
+                // the normal one-second maintenance pass.
+                if (!sameGateways)
                 {
-                    Id = string.IsNullOrEmpty(definition.Name) ? Guid.NewGuid().ToString("N") : definition.Name,
-                    DisplayName = string.IsNullOrEmpty(definition.DisplayName) ? definition.Name : definition.DisplayName,
-                    GatewayA = SelectGateway(_candidateCache, endA, reservedGateways),
-                    GatewayB = null,
-                    Online = false,
-                    Reason = "selecting gateways"
-                };
-
-                if (link.GatewayA != null)
-                    reservedGateways.Add(link.GatewayA.Vessel.id);
-
-                link.GatewayB = SelectGateway(_candidateCache, endB, reservedGateways);
-                if (link.GatewayB != null)
-                    reservedGateways.Add(link.GatewayB.Vessel.id);
-
-                link.Reason = link.HasValidGateways ? "awaiting power" : "missing valid gateway";
-                _links.Add(link);
+                    link.Online = false;
+                    link.Reason = link.HasValidGateways ? "validating new gateways" : "missing valid gateway";
+                }
+                next.Add(link);
             }
 
-            PublishLinks(_links.Count == 0 ? "no bridge definitions" : "gateway selection complete");
+            _links.Clear();
+            _links.AddRange(next);
+            PublishLinks(_links.Count == 0 ? "no bridge definitions" : "gateway inventory reconciled");
+        }
+
+        private static GatewayCandidate SelectPreferredGateway(
+            List<GatewayCandidate> candidates, WormholeInfo wormhole,
+            HashSet<Guid> excluded, GatewayCandidate current)
+        {
+            if (current != null && current.Vessel != null && wormhole != null &&
+                current.Wormhole != null && current.Wormhole.Body == wormhole.Body &&
+                (excluded == null || !excluded.Contains(current.Vessel.id)))
+            {
+                GatewayCandidate refreshed = candidates.FirstOrDefault(c =>
+                    c != null && c.Vessel != null && c.Vessel.id == current.Vessel.id &&
+                    c.Wormhole != null && c.Wormhole.Body == wormhole.Body && c.IsValid);
+                if (refreshed != null) return refreshed;
+            }
+            return SelectGateway(candidates, wormhole, excluded);
+        }
+
+        private static bool SameGateway(GatewayCandidate a, GatewayCandidate b)
+        {
+            if (a == null || b == null) return a == null && b == null;
+            return a.Vessel != null && b.Vessel != null && a.Vessel.id == b.Vessel.id;
         }
 
         private List<QuantumBridge> GetEffectiveBridgeDefinitions()
@@ -194,9 +233,12 @@ namespace QuantumRelay
                     continue;
                 }
 
-                double needed = QuantumRelaySettings.ElectricChargePerSecondPerGateway * elapsed;
-                bool aPowered = PowerManager.Consume(link.GatewayA, needed);
-                bool bPowered = PowerManager.Consume(link.GatewayB, needed);
+                // Modern relay EC is owned exclusively by ModuleQuantumRelay's
+                // converter-backed power controller. Legacy hardware only needs
+                // a non-empty EC store; the network layer never consumes a second
+                // hidden power charge.
+                bool aPowered = link.GatewayA.HasQuantumRelayModule || link.GatewayA.HasElectricCharge;
+                bool bPowered = link.GatewayB.HasQuantumRelayModule || link.GatewayB.HasElectricCharge;
                 link.Online = aPowered && bPowered;
                 link.Reason = link.Online ? "ready" : "insufficient EC";
             }

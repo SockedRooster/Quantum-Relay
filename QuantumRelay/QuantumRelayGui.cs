@@ -4,7 +4,7 @@ using UnityEngine;
 
 namespace QuantumRelay
 {
-    /// <summary>v1.3 alpha 2 multi-scene toolbar, network overview, settings, diagnostics and about console.</summary>
+    /// <summary>v1.3.1 multi-scene toolbar, network overview, settings, diagnostics and about console.</summary>
     [KSPAddon(KSPAddon.Startup.EveryScene, false)]
     internal sealed class QuantumRelayGui : MonoBehaviour
     {
@@ -22,9 +22,7 @@ namespace QuantumRelay
         private bool _visible;
         private Page _page;
 
-        private int _draftSignal;
         private double _draftRadius;
-        private double _draftPower;
         private bool _draftAutoRebuild;
         private bool _draftMessages;
         private bool _draftDebug;
@@ -99,7 +97,7 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
                 ApplicationLauncher.AppScenes.SPACECENTER | ApplicationLauncher.AppScenes.TRACKSTATION,
                 _toolbarTexture);
 
-            Debug.Log("[QuantumRelay] v1.3 alpha 2 toolbar button created for Flight, Space Center and Tracking Station.");
+            Debug.Log("[QuantumRelay] v1.3.1 toolbar button created for Flight, Space Center and Tracking Station.");
         }
 
         private void OnAppLauncherDestroyed() { _button = null; }
@@ -121,7 +119,7 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
             if (!_visible) return;
             GUI.skin = HighLogic.Skin;
             _windowRect = GUILayout.Window(WindowId, _windowRect, DrawWindow,
-                "Quantum Relay v1.3 alpha 2", GUILayout.Width(WindowWidth));
+                "Quantum Relay v1.3.1", GUILayout.Width(WindowWidth));
             _windowRect.x = Mathf.Clamp(_windowRect.x, 0f, Mathf.Max(0f, Screen.width - _windowRect.width));
             _windowRect.y = Mathf.Clamp(_windowRect.y, 0f, Mathf.Max(0f, Screen.height - 36f));
             QueueWindowPositionSave();
@@ -225,7 +223,6 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
 
             if (!flight)
                 GUILayout.Label("Last telemetry: " + QuantumRelayRegistry.AgeText());
-            GUILayout.Label("Quantum link quality: " + QuantumRelaySettings.SignalQualityPercent + "%");
             if (flight)
                 GUILayout.Label("Active wormholes: " + QuantumRelayRuntimeState.ActiveLinkCount);
 
@@ -301,6 +298,16 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
                     (string.IsNullOrEmpty(link.Reason)
                         ? (link.Online ? "ready" : "offline")
                         : link.Reason));
+                if (link.GatewayA != null && link.GatewayB != null)
+                {
+                    double aStrength = link.GatewayA.HasQuantumRelayModule ? link.GatewayA.RelaySignalStrength : 0.25;
+                    double bStrength = link.GatewayB.HasQuantumRelayModule ? link.GatewayB.RelaySignalStrength : 0.25;
+                    double effective = Math.Min(aStrength, bStrength);
+                    GUILayout.Label("Effective bridge strength: " + FormatPercent(effective));
+                    if (Math.Abs(aStrength - bStrength) > 0.001)
+                        GUILayout.Label("Limited by: " + (aStrength < bStrength
+                            ? GetLinkVesselName(link.GatewayA) : GetLinkVesselName(link.GatewayB)));
+                }
             }
 
             GUILayout.EndVertical();
@@ -338,6 +345,8 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
                 gateway.HasQuantumRelayModule,
                 gateway.RelayModel,
                 gateway.RelayTier);
+            GUILayout.Label("Hardware signal strength: " +
+                FormatPercent(gateway.HasQuantumRelayModule ? gateway.RelaySignalStrength : 0.25));
             Color old = GUI.contentColor;
             GUI.contentColor = gateway.IsValid ? Color.green : Color.yellow;
             GUILayout.Label(gateway.IsValid ? "[READY]" : "[WAITING]");
@@ -392,17 +401,9 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
             GUILayout.Label("Quantum Link Configuration");
             GUILayout.Space(5f);
 
-            DrawStepSetting("Quantum link quality", _draftSignal + "%",
-                delegate { _draftSignal = Math.Max(10, _draftSignal - 10); },
-                delegate { _draftSignal = Math.Min(100, _draftSignal + 10); });
-
             DrawStepSetting("Gateway activation radius", FormatNumber(_draftRadius / 1000.0) + " km",
                 delegate { _draftRadius = Math.Max(100000.0, _draftRadius - 25000.0); },
                 delegate { _draftRadius = Math.Min(500000.0, _draftRadius + 25000.0); });
-
-            DrawStepSetting("Gateway power requirement", FormatNumber(_draftPower) + " EC/s",
-                delegate { _draftPower = Math.Max(0.0, _draftPower - 1.0); },
-                delegate { _draftPower = Math.Min(50.0, _draftPower + 1.0); });
 
             GUILayout.Space(6f);
             _draftAutoRebuild = GUILayout.Toggle(_draftAutoRebuild, "Automatically rebuild CommNet after changes");
@@ -412,7 +413,7 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
 
             if (GUILayout.Button("Apply and Save"))
             {
-                bool networkChanged = QuantumRelaySettings.Apply(_draftSignal, _draftRadius, _draftPower,
+                bool networkChanged = QuantumRelaySettings.Apply(_draftRadius,
                     _draftAutoRebuild, _draftMessages, _draftDebug, true);
                 if (networkChanged)
                 {
@@ -467,7 +468,6 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
             GUILayout.Label("Bridge");
             GUILayout.Label("CommNet hook: " + (CommNetNetworkInstaller.IsInstalled ? "INSTALLED" : "NOT INSTALLED"));
             GUILayout.Label("Gateway pair active: " + (QuantumGatewayManager.Active ? "YES" : "NO"));
-            GUILayout.Label("Configured signal quality: " + QuantumRelaySettings.SignalQualityPercent + "%");
             GUILayout.Label("Gateway radius: " + FormatNumber(QuantumRelaySettings.GatewayRadiusMetres / 1000.0) + " km");
             double gatewayAPower =
                 QuantumRelayRuntimeState.GatewayA != null
@@ -482,12 +482,6 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
                         QuantumRelayRuntimeState.GatewayB.RelayPowerRate)
                     : 0.0;
 
-            GUILayout.Label(
-                "Configured fallback power: " +
-                FormatNumber(
-                    QuantumRelaySettings
-                        .ElectricChargePerSecondPerGateway) +
-                " EC/s");
             GUILayout.Label(
                 "Gateway A live draw: " +
                 FormatNumber(gatewayAPower) +
@@ -590,9 +584,7 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
 
         private void CopySettingsToDraft()
         {
-            _draftSignal = QuantumRelaySettings.SignalQualityPercent;
             _draftRadius = QuantumRelaySettings.GatewayRadiusMetres;
-            _draftPower = QuantumRelaySettings.ElectricChargePerSecondPerGateway;
             _draftAutoRebuild = QuantumRelaySettings.AutoRebuildCommNet;
             _draftMessages = QuantumRelaySettings.ShowScreenMessages;
             _draftDebug = QuantumRelaySettings.DebugLogging;
@@ -773,9 +765,7 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
 
         private static string FormatPercent(double fraction)
         {
-            double clamped =
-                Math.Max(0.0, Math.Min(1.0, fraction));
-
+            double clamped = Math.Max(0.0, Math.Min(1.25, fraction));
             return (clamped * 100.0).ToString("0") + "%";
         }
 

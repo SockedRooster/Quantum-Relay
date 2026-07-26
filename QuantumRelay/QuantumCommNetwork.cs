@@ -26,7 +26,7 @@ namespace QuantumRelay
                 // science-transmission calculations.
                 CommLink link = Connect(a, b, 1E-07);
                 double quality = QuantumGatewayManager.GetPairSignalQuality(a, b);
-                if (quality <= 0.0) quality = QuantumRelaySettings.SignalQualityMultiplier;
+                if (quality <= 0.0) quality = 0.25;
                 link.strengthRR = quality;
                 link.strengthAR = quality;
                 link.strengthBR = quality;

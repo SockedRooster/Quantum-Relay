@@ -111,16 +111,23 @@ namespace QuantumRelay
             // A bridge is limited by its weaker endpoint. This gives the three
             // reflector tiers meaningful network quality while allowing mixed
             // tier links without overstating their capability.
-            double a = link.GatewayA != null ? link.GatewayA.RelaySignalStrength : 0.0;
-            double b = link.GatewayB != null ? link.GatewayB.RelaySignalStrength : 0.0;
-            if (a <= 0.0) a = TierSignal(link.GatewayA != null ? link.GatewayA.RelayTier : 1);
-            if (b <= 0.0) b = TierSignal(link.GatewayB != null ? link.GatewayB.RelayTier : 1);
-            return Math.Max(0.0, Math.Min(1.0, Math.Min(a, b)));
+            double a = EndpointSignal(link.GatewayA);
+            double b = EndpointSignal(link.GatewayB);
+            return Math.Max(0.0, Math.Min(1.25, Math.Min(a, b)));
+        }
+
+
+        private static double EndpointSignal(GatewayCandidate gateway)
+        {
+            if (gateway == null) return 0.0;
+            if (!gateway.HasQuantumRelayModule) return 0.25;
+            if (gateway.RelaySignalStrength > 0.0) return gateway.RelaySignalStrength;
+            return TierSignal(gateway.RelayTier);
         }
 
         private static double TierSignal(int tier)
         {
-            return tier >= 3 ? 1.0 : (tier == 2 ? 0.6 : 0.4);
+            return tier >= 4 ? 1.25 : (tier == 3 ? 1.0 : (tier == 2 ? 0.6 : 0.4));
         }
 
         public static void Clear()

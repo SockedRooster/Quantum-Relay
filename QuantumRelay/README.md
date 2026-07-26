@@ -1,31 +1,62 @@
-# Quantum Relay v1.3.0 Cleanup
+# Quantum Relay v1.3.1
 
-This is a full-source replacement, not an overlay patch.
+Full source cleanup and stability release.
 
-Included fixes and features:
+## Included fixes
 
-- Restores the complete source tree, including `WormholeScanner.cs` and the `WormholeInfo` type.
-- Uses an explicit compile manifest in `QuantumRelay.csproj`, preventing source files from being silently omitted.
-- Retains Dynamic Battery Storage / Resource Monitor-compatible stock converter power loads.
-- Retains configurable power, multi-wormhole routing, network overview, and tier startup sequences.
-- Debounces temporary reflector-state changes before resetting synchronization.
-- Applies tier signal strength at the weaker endpoint of each link:
+- Periodic 15-second gateway discovery now reconciles links in place instead of clearing and recreating them.
+- Healthy links retain their online state when the selected gateway vessels have not changed.
+- Synchronization is no longer intentionally restarted by a routine gateway inventory scan.
+- Removed the obsolete global signal-quality control.
+- Removed the obsolete global gateway-power control.
+- Modern relay power remains owned by the converter-backed `ModuleQuantumRelay` power controller.
+- The network layer no longer applies a second hidden EC charge.
+- Gateway activation-radius changes request an immediate gateway refresh.
+- Signal tiers are hardware-defined:
+  - Legacy reflector-only gateway: 25%
   - QR-100 Pioneer: 40%
   - QR-250 Voyager: 60%
   - QR-500 Event Horizon: 100%
+  - QR-750 Horizon Prime: 125% hardware rating
+- Mixed links are limited by their weaker endpoint.
+- GUI now shows hardware signal strength and effective bridge strength separately.
 
-## Install source
+## QR-750 Horizon Prime
 
-1. Back up your current `QuantumRelay` source directory.
-2. Delete the contents of that source directory. Do not merge this package over an older alpha tree.
-3. Copy every file and folder from this package into the empty source directory.
-4. Build from the directory containing `QuantumRelay.csproj`:
+`Parts/QR-750_HorizonPrime.cfg` is a playable tier-four relay profile using the
+Near Future Exploration giant-reflector geometry at a larger scale. It includes:
+
+- Tier 4
+- 125% hardware signal rating
+- Six-wormhole design capacity metadata
+- 5-second synchronization
+- 0.05 EC/s standby draw
+- 2.5 EC/s synchronization draw
+- 6.0 EC/s operational draw
+- A dedicated Horizon Prime startup sequence
+
+The concept sheet is included in `ConceptArt/`. The package does **not** contain
+a new `.mu` model or custom textures; the playable part currently reuses and
+rescales the Near Future Exploration giant reflector. A true custom 3D asset can
+replace the model later without changing the relay profile or core code.
+
+## Build
 
 ```powershell
 dotnet clean
 dotnet build -c Release
 ```
 
-5. Replace `GameData\QuantumRelay\Plugins\QuantumRelay.dll` with the compiled DLL.
-6. Copy the included `Parts`, `QuantumRelayResources.cfg`, and `MultipleWormholes.cfg` files into `GameData\QuantumRelay`.
-7. Test with newly placed relay parts first because old craft files can retain old module values.
+The project expects `KSPRoot` to point to a Kerbal Space Program installation.
+You can override it on the command line:
+
+```powershell
+dotnet build -c Release -p:KSPRoot="C:\Games\Kerbal Space Program"
+```
+
+## Required test
+
+Leave an established link active for at least two minutes. It must remain online
+through multiple 15-second scans without returning to synchronization. Then test
+all hardware tiers and verify 25/40/60/100/125 hardware values and weakest-endpoint
+bridge values.
