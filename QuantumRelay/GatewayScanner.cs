@@ -30,6 +30,12 @@ namespace QuantumRelay
         public double RelaySignalStrength { get; set; }
         public string RelayHardwareEvidence { get; set; }
 
+        // Per-vessel relay inventory used to calculate synchronization.
+        internal readonly Dictionary<RelayClass, int> OperationalRelayCounts =
+            new Dictionary<RelayClass, int>();
+        internal readonly Dictionary<RelayClass, double> RelayPowerByClass =
+            new Dictionary<RelayClass, double>();
+
         // Vessel diagnostics retained for legacy hardware and UI reporting.
         public bool HasCommNet { get; set; }
         public string CommNetEvidence { get; set; }
@@ -232,6 +238,8 @@ namespace QuantumRelay
                 }
             }
 
+            FinalizeRelayAggregation(result);
+
             result.HasCommNet =
                 TryGetCommNetCapability(vessel, out string evidence);
             result.CommNetEvidence = evidence;
@@ -295,26 +303,26 @@ namespace QuantumRelay
                 relay.DeploymentState ==
                     QuantumRelayDeploymentState.Extended;
 
-            if (operational ||
-                string.IsNullOrEmpty(result.RelayOperationalState) ||
-                result.RelayOperationalState == "Not Installed")
+            if (operational)
             {
-                result.RelayOperationalState =
-                    relay.OperationalStateName;
-                result.RelayDeploymentState =
-                    relay.DeploymentState.ToString();
-                result.RelaySynchronized =
-                    relay.IsSynchronized;
-                result.RelaySynchronizationFraction =
-                    relay.SynchronizationFraction;
-                result.RelayPowerRate =
-                    relay.CurrentPowerRate;
-                result.RelayTier =
-                    relay.RelayTier;
-                result.RelayModel =
-                    relay.relayModel;
-                result.RelaySignalStrength =
-                    relay.SignalStrengthMultiplier;
+                AddOperationalRelay(
+                    result,
+                    relay.RelayClass,
+                    relay.CurrentPowerRate);
+            }
+
+            // Preserve useful diagnostics when no module on the vessel is
+            // operational. FinalizeRelayAggregation replaces these values when
+            // an operational group exists.
+            if (!result.QuantumRelayOperational)
+            {
+                result.RelayOperationalState = relay.OperationalStateName;
+                result.RelayDeploymentState = relay.DeploymentState.ToString();
+                result.RelaySynchronized = relay.IsSynchronized;
+                result.RelaySynchronizationFraction = relay.SynchronizationFraction;
+                result.RelayPowerRate = relay.CurrentPowerRate;
+                result.RelayTier = relay.RelayTier;
+                result.RelayModel = relay.relayModel;
             }
 
             result.RelayHardwareEvidence = string.Format(
@@ -364,6 +372,8 @@ namespace QuantumRelay
                     ReadProtoElectricCharge(part, result);
                 }
             }
+
+            FinalizeRelayAggregation(result);
 
             result.HasCommNet =
                 TryGetCommNetCapability(vessel, out string evidence);
@@ -507,52 +517,39 @@ namespace QuantumRelay
                 deploymentState ==
                     QuantumRelayDeploymentState.Extended;
 
-            if (operational ||
-                string.IsNullOrEmpty(result.RelayOperationalState) ||
-                result.RelayOperationalState == "Not Installed")
+            double displayedPowerRate = 0.0;
+            if (enabled)
+            {
+                if (operational)
+                    displayedPowerRate = operationalPowerRate;
+                else if (!synchronized &&
+                         (deploymentState == QuantumRelayDeploymentState.Fixed ||
+                          deploymentState == QuantumRelayDeploymentState.Extended))
+                    displayedPowerRate = synchronizationPowerRate;
+                else
+                    displayedPowerRate = idlePowerRate;
+            }
+
+            if (operational)
+            {
+                AddOperationalRelay(
+                    result,
+                    relayClass,
+                    Math.Max(0.0, displayedPowerRate));
+            }
+
+            if (!result.QuantumRelayOperational)
             {
                 result.RelayOperationalState =
                     string.IsNullOrEmpty(persistedState)
-                        ? (operational
-                            ? "Operational (Legacy Save)"
-                            : "Unknown")
+                        ? (operational ? "Operational (Legacy Save)" : "Unknown")
                         : persistedState;
-
-                result.RelayDeploymentState =
-                    deploymentState.ToString();
-                result.RelaySynchronized =
-                    synchronized;
-                result.RelaySynchronizationFraction =
-                    synchronizationFraction;
-
-                double displayedPowerRate = 0.0;
-                if (enabled)
-                {
-                    if (operational)
-                    {
-                        displayedPowerRate = operationalPowerRate;
-                    }
-                    else if (!synchronized &&
-                             (deploymentState ==
-                                  QuantumRelayDeploymentState.Fixed ||
-                              deploymentState ==
-                                  QuantumRelayDeploymentState.Extended))
-                    {
-                        displayedPowerRate = synchronizationPowerRate;
-                    }
-                    else
-                    {
-                        displayedPowerRate = idlePowerRate;
-                    }
-                }
-
+                result.RelayDeploymentState = deploymentState.ToString();
+                result.RelaySynchronized = synchronized;
+                result.RelaySynchronizationFraction = synchronizationFraction;
                 result.RelayPowerRate = Math.Max(0.0, displayedPowerRate);
-                result.RelayTier =
-                    tier;
-                result.RelayModel =
-                    model;
-                result.RelaySignalStrength =
-                    Math.Max(0.0, Math.Min(1.25, signalStrength));
+                result.RelayTier = tier;
+                result.RelayModel = model;
             }
 
             result.RelayHardwareEvidence = string.Format(
@@ -571,6 +568,112 @@ namespace QuantumRelay
 
             result.ReflectorEvidence =
                 result.RelayHardwareEvidence;
+        }
+
+        private static void AddOperationalRelay(
+            GatewayCandidate result,
+            RelayClass relayClass,
+            double powerRate)
+        {
+            int count;
+            result.OperationalRelayCounts.TryGetValue(relayClass, out count);
+            result.OperationalRelayCounts[relayClass] = count + 1;
+
+            double existingPower;
+            result.RelayPowerByClass.TryGetValue(relayClass, out existingPower);
+            result.RelayPowerByClass[relayClass] =
+                existingPower + Math.Max(0.0, powerRate);
+        }
+
+        private static void FinalizeRelayAggregation(
+            GatewayCandidate result)
+        {
+            if (result == null || result.OperationalRelayCounts.Count == 0)
+                return;
+
+            RelayClass winningClass = RelayClass.Pioneer;
+            int winningCount = 0;
+            double winningStrength = -1.0;
+
+            foreach (KeyValuePair<RelayClass, int> pair in
+                     result.OperationalRelayCounts)
+            {
+                double strength = CalculateStackedSynchronization(
+                    pair.Key,
+                    pair.Value);
+
+                RelayDefinition definition = RelayCatalog.Get(pair.Key);
+                RelayDefinition winningDefinition = RelayCatalog.Get(winningClass);
+
+                if (strength > winningStrength + 0.000001 ||
+                    (Math.Abs(strength - winningStrength) <= 0.000001 &&
+                     definition.Tier > winningDefinition.Tier))
+                {
+                    winningClass = pair.Key;
+                    winningCount = pair.Value;
+                    winningStrength = strength;
+                }
+            }
+
+            RelayDefinition selected = RelayCatalog.Get(winningClass);
+            double totalPower = 0.0;
+            foreach (double classPower in result.RelayPowerByClass.Values)
+                totalPower += classPower;
+
+            result.QuantumRelayOperational = true;
+            result.RelayOperationalState = "Operational";
+            result.RelayDeploymentState = "Extended";
+            result.RelaySynchronized = true;
+            result.RelaySynchronizationFraction = 1.0;
+            result.RelayPowerRate = totalPower;
+            result.RelayTier = selected.Tier;
+            result.RelayModel = winningCount > 1
+                ? string.Format("{0} Array x{1}", selected.DisplayName, winningCount)
+                : selected.DisplayName;
+            result.RelaySignalStrength = winningStrength;
+            result.RelayHardwareEvidence = BuildRelayInventoryEvidence(result);
+            result.ReflectorEvidence = result.RelayHardwareEvidence;
+        }
+
+        internal static double CalculateStackedSynchronization(
+            RelayClass relayClass,
+            int count)
+        {
+            if (count <= 0)
+                return 0.0;
+
+            switch (relayClass)
+            {
+                case RelayClass.Pioneer:
+                    return 1.0 - Math.Pow(0.75, count);
+
+                case RelayClass.Voyager:
+                    return 1.0 - Math.Pow(0.50, count);
+
+                case RelayClass.EventHorizon:
+                    return count >= 2 ? 1.00 : 0.80;
+
+                case RelayClass.HorizonPrime:
+                    return count >= 2 ? 1.50 : 1.25;
+
+                default:
+                    return 0.0;
+            }
+        }
+
+        private static string BuildRelayInventoryEvidence(
+            GatewayCandidate result)
+        {
+            return string.Join(
+                "; ",
+                result.OperationalRelayCounts
+                    .OrderBy(pair => RelayCatalog.Get(pair.Key).Tier)
+                    .Select(pair => string.Format(
+                        "{0} x{1} => {2:P2}",
+                        RelayCatalog.Get(pair.Key).DisplayName,
+                        pair.Value,
+                        CalculateStackedSynchronization(pair.Key, pair.Value)))
+                    .ToArray());
         }
 
         private static ModuleQuantumRelay FindPrefabRelayModule(

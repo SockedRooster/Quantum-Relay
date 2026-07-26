@@ -41,7 +41,7 @@ namespace QuantumRelay
                 },
                 {
                     RelayClass.EventHorizon,
-                    new RelayDefinition(RelayClass.EventHorizon, 3, "QR-500 Event Horizon", 1.00, 4)
+                    new RelayDefinition(RelayClass.EventHorizon, 3, "QR-500 Event Horizon", 0.80, 4)
                 },
                 {
                     RelayClass.HorizonPrime,
