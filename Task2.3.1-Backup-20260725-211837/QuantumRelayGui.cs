@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using KSP.UI.Screens;
 using UnityEngine;
 
@@ -30,59 +30,23 @@ namespace QuantumRelay
         private bool _draftDebug;
         private string _localTicker = "Ready.";
 
-        
-        private bool _quantumRelaySceneActive;
-        private bool _quantumRelayEventsRegistered;
-public void Start()
+        public void Start()
         {
-            _quantumRelaySceneActive = IsSupportedScene();
-
-            if (!_quantumRelaySceneActive)
-            {
-                enabled = false;
-                Debug.Log(
-                    "[QuantumRelay] GUI disabled for unsupported scene: " +
-                    HighLogic.LoadedScene);
-                return;
-            }
-
-            Debug.Log(
-                "[QuantumRelay] GUI starting in supported scene: " +
-                HighLogic.LoadedScene);
-
             CopySettingsToDraft();
             _windowRect.x = QuantumRelaySettings.WindowX;
             _windowRect.y = QuantumRelaySettings.WindowY;
             _lastSavedPosition = new Vector2(_windowRect.x, _windowRect.y);
             GameEvents.onGUIApplicationLauncherReady.Add(OnAppLauncherReady);
             GameEvents.onGUIApplicationLauncherDestroyed.Add(OnAppLauncherDestroyed);
-                        _quantumRelayEventsRegistered = true;
-if (ApplicationLauncher.Ready) OnAppLauncherReady();
+            if (ApplicationLauncher.Ready) OnAppLauncherReady();
         }
 
         public void OnDestroy()
         {
-            if (_quantumRelayEventsRegistered)
-            {
-                GameEvents.onGUIApplicationLauncherReady.Remove(
-                    OnAppLauncherReady);
-                GameEvents.onGUIApplicationLauncherDestroyed.Remove(
-                    OnAppLauncherDestroyed);
-                _quantumRelayEventsRegistered = false;
-            }
-
-            if (_quantumRelaySceneActive)
-            {
-                SaveWindowPositionNow();
-                RemoveButton();
-            }
-
-            _visible = false;
-            _quantumRelaySceneActive = false;
-
-            Debug.Log(
-                "[QuantumRelay] GUI destroyed in scene: " +
-                HighLogic.LoadedScene);
+            GameEvents.onGUIApplicationLauncherReady.Remove(OnAppLauncherReady);
+            GameEvents.onGUIApplicationLauncherDestroyed.Remove(OnAppLauncherDestroyed);
+            SaveWindowPositionNow();
+            RemoveButton();
         }
 
         private void OnAppLauncherReady()
@@ -117,8 +81,7 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
 
         public void OnGUI()
         {
-            if (!_quantumRelaySceneActive || !IsSupportedScene()) return;
-            if (!_visible) return;
+            if (!_visible || !IsSupportedScene()) return;
             GUI.skin = HighLogic.Skin;
             _windowRect = GUILayout.Window(WindowId, _windowRect, DrawWindow,
                 "Quantum Relay v1.2 alpha 2", GUILayout.Width(WindowWidth));

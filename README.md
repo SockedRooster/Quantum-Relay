@@ -1,24 +1,21 @@
-# Quantum Relay — Sprint 2, Task 2.3
+# Quantum Relay — Sprint 2, Task 2.3.1 Stability
 
-This rebuilt package is based on the current GitHub source after Task 2.2.
+This package does not use a Git patch. It safely edits the current local source
+and creates timestamped backups first.
 
-It does **not** contain or use a Git patch.
+## Apply
 
-## Apply from VS Code
+Extract the ZIP. Open a PowerShell terminal in the repository root, then run the
+script using its actual extracted path.
 
-1. Extract the ZIP anywhere, such as Downloads.
-2. Open the Quantum Relay repository in VS Code.
-3. Open a PowerShell terminal in the repository root.
-4. Run:
+Example:
 
 ```powershell
-& "$env:USERPROFILE\Downloads\QuantumRelay_Sprint2_Task2.3_REBUILT\Apply-Task2.3.ps1"
+& "D:\Downloads\QuantumRelay_Sprint2_Task2.3.1_Stability\Apply-Task2.3.1.ps1"
 ```
 
-Change the path if you extracted it somewhere else.
-
-The script uses your current terminal folder as the repository root. It creates
-a timestamped backup before changing anything.
+Because the terminal is open in the repository root, the script automatically
+uses the correct project location.
 
 Then build:
 
@@ -26,32 +23,54 @@ Then build:
 dotnet build
 ```
 
-## Direct-copy alternative
+Copy the new DLL to:
 
-The two complete replacement files are under `ReplacementFiles`:
+```text
+Kerbal Space Program\GameData\QuantumRelay\Plugins\QuantumRelay.dll
+```
 
-- `QuantumRelayRegistry.cs`
-- `QuantumRelayMissionControl.cs`
+## Changes
 
-They belong in your project's `QuantumRelay` source folder.
+### QuantumRelayGui
 
-`QuantumRelayGui.cs` is updated by the installer because only three focused
-sections and one helper section need to change.
+- Immediately disables itself in unsupported scenes, including the main menu.
+- Does not subscribe to toolbar events in unsupported scenes.
+- Tracks whether toolbar events were registered.
+- Cleans up the toolbar button and event subscriptions safely.
+- Stops drawing immediately during scene transitions.
+- Logs startup and destruction by scene.
 
-## Task 2.3 features
+### QuantumRelayMissionControl
 
-- Saves relay model and tier in Mission Control telemetry
-- Saves operational and deployment state
-- Saves synchronization status and percentage
-- Saves relay EC draw
-- Displays relay data during flight
-- Displays last-known relay data at Space Center and Tracking Station
-- Expands Diagnostics for modern and legacy relay hardware
-- Selects the best gateway using readiness, tier, synchronization and EC reserve
-- Provides specific offline status messages
+- Immediately disables itself outside Space Center and Tracking Station.
+- Logs startup and destruction by scene.
+
+### QuantumRelayBootstrap
+
+- Prevents duplicate event registration.
+- Prevents duplicate event removal.
+- Logs flight lifecycle startup and destruction.
+
+## Important
+
+The uploaded KSP log points to an EVE main-menu cloud-handler exception rather
+than a Quantum Relay exception. This update isolates Quantum Relay from the
+main-menu lifecycle, but it may not eliminate a grey screen caused inside EVE.
+
+## Test
+
+1. Launch KSP and load the affected save.
+2. Confirm the Quantum Relay toolbar and UI still work in flight.
+3. Visit Space Center and Tracking Station.
+4. Return to the main menu.
+5. Check `KSP.log` for:
+   - `GUI disabled for unsupported scene`
+   - `Mission Control disabled for unsupported scene`
+   - `Flight bootstrap destroyed`
+6. Note whether the grey screen still occurs.
 
 ## Suggested commit
 
 ```text
-feature: display relay hardware state in mission control
+fix: isolate relay components during scene transitions
 ```

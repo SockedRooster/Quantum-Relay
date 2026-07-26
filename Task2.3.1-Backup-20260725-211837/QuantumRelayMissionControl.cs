@@ -18,17 +18,7 @@ namespace QuantumRelay
         public void Start()
         {
             if (!IsMissionControlScene())
-            {
-                enabled = false;
-                Debug.Log(
-                    "[QuantumRelay] Mission Control disabled for unsupported scene: " +
-                    HighLogic.LoadedScene);
                 return;
-            }
-
-            Debug.Log(
-                "[QuantumRelay] Mission Control starting in scene: " +
-                HighLogic.LoadedScene);
 
             QuantumRelaySettings.Load();
             QuantumRelayRegistry.Reload();
@@ -50,12 +40,6 @@ namespace QuantumRelay
             ScanPersistentVessels();
         }
 
-        public void OnDestroy()
-        {
-            Debug.Log(
-                "[QuantumRelay] Mission Control destroyed in scene: " +
-                HighLogic.LoadedScene);
-        }
         private static void ScanPersistentVessels()
         {
             try

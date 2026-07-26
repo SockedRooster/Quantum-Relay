@@ -24,12 +24,8 @@ namespace QuantumRelay
         private bool _cacheDirty = true;
         private bool _lastOnline;
 
-        
-        private bool _quantumRelayEventsRegistered;
-public void Start()
+        public void Start()
         {
-            Debug.Log(
-                "[QuantumRelay] Flight bootstrap starting.");
             QuantumRelaySettings.Load();
             _lastMaintenanceUt = Planetarium.GetUniversalTime();
             RegisterEvents();
@@ -42,10 +38,7 @@ public void Start()
         {
             UnregisterEvents();
             QuantumGatewayManager.Clear();
-        
-            Debug.Log(
-                "[QuantumRelay] Flight bootstrap destroyed.");
-}
+        }
 
         public void Update()
         {
@@ -162,12 +155,7 @@ public void Start()
 
         private void RegisterEvents()
         {
-            
-            if (_quantumRelayEventsRegistered)
-                return;
-
-            _quantumRelayEventsRegistered = true;
-GameEvents.onVesselCreate.Add(OnVesselEvent);
+            GameEvents.onVesselCreate.Add(OnVesselEvent);
             GameEvents.onVesselDestroy.Add(OnVesselEvent);
             GameEvents.onVesselWasModified.Add(OnVesselEvent);
             GameEvents.onVesselChange.Add(OnVesselEvent);
@@ -175,12 +163,7 @@ GameEvents.onVesselCreate.Add(OnVesselEvent);
 
         private void UnregisterEvents()
         {
-            
-            if (!_quantumRelayEventsRegistered)
-                return;
-
-            _quantumRelayEventsRegistered = false;
-GameEvents.onVesselCreate.Remove(OnVesselEvent);
+            GameEvents.onVesselCreate.Remove(OnVesselEvent);
             GameEvents.onVesselDestroy.Remove(OnVesselEvent);
             GameEvents.onVesselWasModified.Remove(OnVesselEvent);
             GameEvents.onVesselChange.Remove(OnVesselEvent);
