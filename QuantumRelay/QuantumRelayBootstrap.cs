@@ -220,6 +220,13 @@ namespace QuantumRelay
                         ? definition.Name
                         : definition.DisplayName;
 
+                link.NetworkId =
+                    string.IsNullOrEmpty(definition.NetworkId)
+                        ? QuantumNetwork.CreateStableId(
+                            definition.GatewayA,
+                            definition.GatewayB)
+                        : definition.NetworkId;
+
                 link.GatewayA = selectedA;
                 link.GatewayB = selectedB;
 
@@ -464,30 +471,46 @@ namespace QuantumRelay
         private List<QuantumBridge>
             GetEffectiveBridgeDefinitions()
         {
-            if (_bridgeDefinitions != null &&
-                _bridgeDefinitions.Count > 0)
-            {
-                return _bridgeDefinitions
-                    .Where(
-                        bridge =>
-                            bridge != null &&
-                            bridge.Enabled)
-                    .ToList();
-            }
-
-            List<QuantumBridge> generated =
+            // Explicit configuration and runtime discovery are merged. This is
+            // important for mod packs with more than one wormhole pair: a
+            // configured Kevbas bridge must not suppress discovery of Borgals.
+            List<QuantumBridge> effective =
                 new List<QuantumBridge>();
 
-            HashSet<string> used =
-                new HashSet<string>(
-                    StringComparer.OrdinalIgnoreCase);
+            HashSet<string> coveredPairs =
+                new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            if (_bridgeDefinitions != null)
+            {
+                foreach (QuantumBridge bridge in _bridgeDefinitions)
+                {
+                    if (bridge == null || !bridge.Enabled)
+                        continue;
+
+                    if (string.IsNullOrEmpty(bridge.NetworkId))
+                    {
+                        bridge.NetworkId =
+                            QuantumNetwork.CreateStableId(
+                                bridge.GatewayA,
+                                bridge.GatewayB);
+                    }
+
+                    effective.Add(bridge);
+                    coveredPairs.Add(
+                        QuantumNetwork.CreateStableId(
+                            bridge.GatewayA,
+                            bridge.GatewayB));
+                }
+            }
+
+            HashSet<string> visitedEndpoints =
+                new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             foreach (WormholeInfo wormhole in _wormholes)
             {
                 if (wormhole == null ||
-                    string.IsNullOrEmpty(
-                        wormhole.Name) ||
-                    used.Contains(wormhole.Name))
+                    string.IsNullOrEmpty(wormhole.Name) ||
+                    visitedEndpoints.Contains(wormhole.Name))
                 {
                     continue;
                 }
@@ -497,58 +520,65 @@ namespace QuantumRelay
                         candidate =>
                             candidate != null &&
                             candidate != wormhole &&
-                            !used.Contains(
-                                candidate.Name) &&
                             ((wormhole.Partner != null &&
-                              candidate.Body ==
-                                  wormhole.Partner) ||
+                              candidate.Body == wormhole.Partner) ||
                              (candidate.Partner != null &&
-                              wormhole.Body ==
-                                  candidate.Partner)));
+                              wormhole.Body == candidate.Partner)));
 
                 if (partner == null)
                     continue;
 
-                used.Add(wormhole.Name);
-                used.Add(partner.Name);
+                visitedEndpoints.Add(wormhole.Name);
+                visitedEndpoints.Add(partner.Name);
 
-                generated.Add(
+                string networkId =
+                    QuantumNetwork.CreateStableId(
+                        wormhole.Name,
+                        partner.Name);
+
+                if (coveredPairs.Contains(networkId))
+                    continue;
+
+                effective.Add(
                     new QuantumBridge
                     {
-                        Name =
-                            "auto-" +
-                            generated.Count,
+                        Name = "auto-" + networkId,
+                        NetworkId = networkId,
                         DisplayName =
                             wormhole.Name +
                             " <-> " +
                             partner.Name,
-                        GatewayA =
-                            wormhole.Name,
-                        GatewayB =
-                            partner.Name,
+                        GatewayA = wormhole.Name,
+                        GatewayB = partner.Name,
                         Enabled = true
                     });
+
+                coveredPairs.Add(networkId);
             }
 
-            if (generated.Count == 0 &&
-                _wormholes.Count >= 2)
+            // Compatibility fallback for wormhole implementations that expose
+            // tagged bodies but do not expose partner metadata. It is only used
+            // when no configured or discovered network exists.
+            if (effective.Count == 0 && _wormholes.Count >= 2)
             {
-                generated.Add(
+                string networkId =
+                    QuantumNetwork.CreateStableId(
+                        _wormholes[0].Name,
+                        _wormholes[1].Name);
+
+                effective.Add(
                     new QuantumBridge
                     {
-                        Name =
-                            "legacy-primary",
-                        DisplayName =
-                            "Primary Quantum Link",
-                        GatewayA =
-                            _wormholes[0].Name,
-                        GatewayB =
-                            _wormholes[1].Name,
+                        Name = "legacy-primary",
+                        NetworkId = networkId,
+                        DisplayName = "Primary Quantum Link",
+                        GatewayA = _wormholes[0].Name,
+                        GatewayB = _wormholes[1].Name,
                         Enabled = true
                     });
             }
 
-            return generated;
+            return effective;
         }
 
         private void MaintainLinks()

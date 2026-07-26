@@ -44,6 +44,7 @@ namespace QuantumRelay
             {
                 Id = "legacy",
                 DisplayName = "Primary Quantum Link",
+                NetworkId = "legacy-primary",
                 GatewayA = gatewayA,
                 GatewayB = gatewayB,
                 Online = online,

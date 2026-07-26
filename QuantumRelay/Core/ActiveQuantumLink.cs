@@ -7,6 +7,7 @@ namespace QuantumRelay.Core
     {
         public string Id { get; set; }
         public string DisplayName { get; set; }
+        public string NetworkId { get; set; }
         public GatewayCandidate GatewayA { get; set; }
         public GatewayCandidate GatewayB { get; set; }
         public bool Online { get; set; }
@@ -32,6 +33,7 @@ namespace QuantumRelay.Core
         {
             Id = Guid.NewGuid().ToString("N");
             DisplayName = "Quantum Link";
+            NetworkId = string.Empty;
             Reason = "initialising";
         }
     }

@@ -27,6 +27,7 @@
     <Compile Include="Configuration/BridgeLoader.cs" />
     <Compile Include="Core/ActiveQuantumLink.cs" />
     <Compile Include="Core/QuantumBridge.cs" />
+    <Compile Include="Core/QuantumNetwork.cs" />
     <Compile Include="Core/QuantumRelayStates.cs" />
     <Compile Include="Core/RelayDeploymentController.cs" />
     <Compile Include="Core/RelayPowerController.cs" />

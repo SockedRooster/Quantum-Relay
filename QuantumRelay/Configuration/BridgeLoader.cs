@@ -22,6 +22,7 @@ namespace QuantumRelay.Configuration
 
                 bridge.Name = node.GetValue("name");
                 bridge.DisplayName = node.GetValue("displayName");
+                bridge.NetworkId = node.GetValue("networkId");
                 bridge.GatewayA = node.GetValue("gatewayA");
                 bridge.GatewayB = node.GetValue("gatewayB");
 

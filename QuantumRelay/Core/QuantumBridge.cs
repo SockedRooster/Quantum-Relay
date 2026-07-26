@@ -11,6 +11,9 @@ namespace QuantumRelay.Core
 
         public string DisplayName { get; set; }
 
+        /// <summary>Stable identity for this independent wormhole network.</summary>
+        public string NetworkId { get; set; }
+
         public string GatewayA { get; set; }
 
         public string GatewayB { get; set; }
@@ -27,6 +30,7 @@ namespace QuantumRelay.Core
 
         public QuantumBridge()
         {
+            NetworkId = string.Empty;
             Enabled = true;
             Health = 100f;
             SignalQuality = 1.0f;
