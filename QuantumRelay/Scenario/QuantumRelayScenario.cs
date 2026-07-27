@@ -61,6 +61,7 @@ namespace QuantumRelay
                     true);
 
                 QuantumRelayRegistry.SaveToScenario(node);
+                QuantumRelayRegistry.FlushToDisk("game save");
             }
         }
 

@@ -41,6 +41,8 @@ namespace QuantumRelay
         public const string CommandModuleName = QuantumRelayConstants.CommandModuleName;
         public const string ReflectorAnimationName = QuantumRelayConstants.ReflectorAnimationName;
 
+        private static bool _missingNodeWarningLogged;
+
         private static string SettingsPath => Path.Combine(
             KSPUtil.ApplicationRootPath,
             "GameData", "QuantumRelay", "PluginData", "Settings.cfg");
@@ -65,7 +67,13 @@ namespace QuantumRelay
 
                 if (node == null)
                 {
-                    Debug.LogWarning("[QuantumRelay] Settings node missing; defaults restored.");
+                    if (!_missingNodeWarningLogged)
+                    {
+                        _missingNodeWarningLogged = true;
+                        Debug.LogWarning(
+                            "[QuantumRelay] Settings node missing; recreated defaults.");
+                    }
+
                     Save();
                     return;
                 }
@@ -141,7 +149,10 @@ namespace QuantumRelay
                 node.AddValue("windowY", WindowY.ToString("0.##", CultureInfo.InvariantCulture));
                 node.AddValue("windowWidth", WindowWidth.ToString("0.##", CultureInfo.InvariantCulture));
                 node.AddValue("windowHeight", WindowHeight.ToString("0.##", CultureInfo.InvariantCulture));
-                node.Save(SettingsPath);
+
+                ConfigNode root = new ConfigNode("QUANTUM_RELAY_CONFIG");
+                root.AddNode(node);
+                root.Save(SettingsPath);
             }
             catch (Exception ex)
             {

@@ -1,6 +1,8 @@
 using System;
 using System.IO;
 using System.Collections.Generic;
+using System.Globalization;
+using System.Text;
 using QuantumRelay.Core;
 using UnityEngine;
 
@@ -75,6 +77,11 @@ namespace QuantumRelay
         private static GatewayTelemetry _gatewayA;
         private static GatewayTelemetry _gatewayB;
         private static readonly List<NetworkTelemetry> _networks = new List<NetworkTelemetry>();
+
+        private const float SaveCooldownSeconds = 10f;
+        private static string _lastPersistedSignature = string.Empty;
+        private static bool _savePending;
+        private static float _nextSaveRealtime;
 
         public static bool Online
         {
@@ -191,7 +198,7 @@ namespace QuantumRelay
             LogNetworkSnapshot("publish", _networks, _reason, now);
 
             if (save)
-                Save();
+                QueueSaveIfChanged();
         }
 
         public static void EnsureLoaded()
@@ -244,6 +251,13 @@ namespace QuantumRelay
             Debug.Log(
                 "[QuantumRelay] Registry written to scenario save | " +
                 "networks=" + _networks.Count);
+        }
+
+        /// <summary>Flushes the compatibility registry immediately.</summary>
+        internal static void FlushToDisk(string reason)
+        {
+            EnsureLoaded();
+            Save(true, reason);
         }
 
         private static void ResetState()
@@ -361,17 +375,44 @@ namespace QuantumRelay
             }
         }
 
-        private static void Save()
+        private static void QueueSaveIfChanged()
+        {
+            string signature = BuildPersistenceSignature();
+            if (!string.Equals(
+                    signature,
+                    _lastPersistedSignature,
+                    StringComparison.Ordinal))
+            {
+                _savePending = true;
+            }
+
+            if (!_savePending || Time.realtimeSinceStartup < _nextSaveRealtime)
+                return;
+
+            Save(false, "telemetry changed");
+        }
+
+        private static void Save(bool force, string reason)
         {
             try
             {
+                string signature = BuildPersistenceSignature();
+                if (!force &&
+                    string.Equals(
+                        signature,
+                        _lastPersistedSignature,
+                        StringComparison.Ordinal))
+                {
+                    _savePending = false;
+                    return;
+                }
+
                 string path = RegistryPath();
 
                 if (string.IsNullOrEmpty(path))
                     return;
 
-                string directory =
-                    Path.GetDirectoryName(path);
+                string directory = Path.GetDirectoryName(path);
 
                 if (!Directory.Exists(directory))
                     Directory.CreateDirectory(directory);
@@ -379,11 +420,24 @@ namespace QuantumRelay
                 ConfigNode root = BuildRoot();
                 root.Save(path);
 
-                Debug.Log(
-                    "[QuantumRelay] Mission Control registry saved | " +
-                    "networks=" + _networks.Count +
-                    " | path=" + path);
-                LogNetworkSnapshot("save", _networks, _reason, _updatedUt);
+                _lastPersistedSignature = signature;
+                _savePending = false;
+                _nextSaveRealtime =
+                    Time.realtimeSinceStartup + SaveCooldownSeconds;
+
+                if (QuantumRelaySettings.DebugLogging)
+                {
+                    Debug.Log(
+                        "[QuantumRelay] Mission Control registry saved | " +
+                        "networks=" + _networks.Count +
+                        " | reason=" + (reason ?? "unspecified") +
+                        " | path=" + path);
+                    LogNetworkSnapshot(
+                        "save",
+                        _networks,
+                        _reason,
+                        _updatedUt);
+                }
             }
             catch (Exception exception)
             {
@@ -391,6 +445,66 @@ namespace QuantumRelay
                     "[QuantumRelay] Unable to save Mission Control " +
                     "registry: " + exception.Message);
             }
+        }
+
+        private static string BuildPersistenceSignature()
+        {
+            StringBuilder builder = new StringBuilder(512);
+            builder.Append(_online).Append('|');
+            builder.Append(_reason ?? string.Empty).Append('|');
+            builder.Append(_networks.Count).Append('|');
+
+            for (int i = 0; i < _networks.Count; i++)
+            {
+                NetworkTelemetry network = _networks[i];
+                if (network == null)
+                {
+                    builder.Append("null|");
+                    continue;
+                }
+
+                builder.Append(network.Id ?? string.Empty).Append('|');
+                builder.Append(network.DisplayName ?? string.Empty).Append('|');
+                builder.Append(network.NetworkId ?? string.Empty).Append('|');
+                builder.Append(network.Online).Append('|');
+                builder.Append(network.Reason ?? string.Empty).Append('|');
+                AppendGatewaySignature(builder, network.GatewayA);
+                AppendGatewaySignature(builder, network.GatewayB);
+            }
+
+            return builder.ToString();
+        }
+
+        private static void AppendGatewaySignature(
+            StringBuilder builder,
+            GatewayTelemetry gateway)
+        {
+            if (gateway == null)
+            {
+                builder.Append("none|");
+                return;
+            }
+
+            builder.Append(gateway.VesselId).Append('|');
+            builder.Append(gateway.VesselName ?? string.Empty).Append('|');
+            builder.Append(gateway.EndpointName ?? string.Empty).Append('|');
+            builder.Append(gateway.BodyName ?? string.Empty).Append('|');
+            builder.Append(gateway.Ready).Append('|');
+            builder.Append(gateway.RelayHardwareReady).Append('|');
+            builder.Append(gateway.HasCommNet).Append('|');
+            builder.Append(gateway.HasProbeControl).Append('|');
+            builder.Append(gateway.HasElectricCharge).Append('|');
+            builder.Append(gateway.HasQuantumRelayModule).Append('|');
+            builder.Append(gateway.QuantumRelayOperational).Append('|');
+            builder.Append(gateway.RelayOperationalState ?? string.Empty).Append('|');
+            builder.Append(gateway.RelayDeploymentState ?? string.Empty).Append('|');
+            builder.Append(gateway.RelaySynchronized).Append('|');
+            builder.Append(gateway.RelayTier).Append('|');
+            builder.Append(gateway.RelayModel ?? string.Empty).Append('|');
+            builder.Append(Math.Round(gateway.RelaySignalStrength, 3)
+                .ToString("0.000", CultureInfo.InvariantCulture)).Append('|');
+            builder.Append(Math.Round(gateway.RelayPowerRate, 3)
+                .ToString("0.000", CultureInfo.InvariantCulture)).Append('|');
         }
 
         private static ConfigNode BuildRoot()
@@ -451,6 +565,9 @@ namespace QuantumRelay
                 });
             }
 
+            _lastPersistedSignature = BuildPersistenceSignature();
+            _savePending = false;
+
             Debug.Log(
                 "[QuantumRelay] Mission Control registry loaded | " +
                 "online=" + _online +
@@ -465,6 +582,9 @@ namespace QuantumRelay
             string reason,
             double updatedUt)
         {
+            if (!QuantumRelaySettings.DebugLogging)
+                return;
+
             int count = networks != null ? networks.Count : 0;
             Debug.Log(
                 "[QuantumRelay][Telemetry] " + stage +

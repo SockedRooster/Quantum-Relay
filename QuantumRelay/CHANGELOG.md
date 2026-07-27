@@ -1,3 +1,14 @@
+# Quantum Relay Changelog
+
+## 1.6.0 Preview 2
+
+- Throttled compatibility-registry disk writes to a 10-second cooldown.
+- Registry persistence now reacts to meaningful topology and relay-state changes instead of every maintenance tick.
+- Forced telemetry flushes on normal game saves and flight-scene exit.
+- Detailed runtime and registry telemetry logs now require Debug Logging.
+- Recreated malformed or missing settings nodes automatically and suppressed repeated warnings.
+- Updated preview metadata to Preview 2.
+
 # Changelog
 
 ## 1.6.0 Preview 1 — Interface Polish

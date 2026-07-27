@@ -55,6 +55,7 @@ namespace QuantumRelay
         public void OnDestroy()
         {
             UnregisterEvents();
+            QuantumRelayRegistry.FlushToDisk("flight scene exit");
             QuantumGatewayManager.Clear();
             QuantumRelayRuntimeState.Clear();
             Debug.Log("[QuantumRelay] Flight bootstrap destroyed.");
