@@ -188,6 +188,8 @@ namespace QuantumRelay
                 : reason;
             _updatedUt = now;
 
+            LogNetworkSnapshot("publish", _networks, _reason, now);
+
             if (save)
                 Save();
         }
@@ -356,7 +358,9 @@ namespace QuantumRelay
                 Debug.Log(
                     "[QuantumRelay] Mission Control registry loaded | " +
                     "online=" + _online +
+                    " | networks=" + _networks.Count +
                     " | path=" + path);
+                LogNetworkSnapshot("load", _networks, _reason, _updatedUt);
             }
             catch (Exception exception)
             {
@@ -407,6 +411,12 @@ namespace QuantumRelay
                     AddNetwork(root, _networks[i]);
 
                 root.Save(path);
+
+                Debug.Log(
+                    "[QuantumRelay] Mission Control registry saved | " +
+                    "networks=" + _networks.Count +
+                    " | path=" + path);
+                LogNetworkSnapshot("save", _networks, _reason, _updatedUt);
             }
             catch (Exception exception)
             {
@@ -414,6 +424,54 @@ namespace QuantumRelay
                     "[QuantumRelay] Unable to save Mission Control " +
                     "registry: " + exception.Message);
             }
+        }
+
+        private static void LogNetworkSnapshot(
+            string stage,
+            IList<NetworkTelemetry> networks,
+            string reason,
+            double updatedUt)
+        {
+            int count = networks != null ? networks.Count : 0;
+            Debug.Log(
+                "[QuantumRelay][Telemetry] " + stage +
+                " | networks=" + count +
+                " | reason=" + (reason ?? "unknown") +
+                " | updatedUt=" + updatedUt.ToString("0.000"));
+
+            if (networks == null)
+                return;
+
+            for (int i = 0; i < networks.Count; i++)
+            {
+                NetworkTelemetry network = networks[i];
+                if (network == null)
+                {
+                    Debug.Log(
+                        "[QuantumRelay][Telemetry] " + stage +
+                        " | network[" + i + "]=null");
+                    continue;
+                }
+
+                Debug.Log(
+                    "[QuantumRelay][Telemetry] " + stage +
+                    " | network[" + i + "]" +
+                    " | id=" + (network.Id ?? string.Empty) +
+                    " | name=" + (network.DisplayName ?? "Quantum Link") +
+                    " | networkId=" + (network.NetworkId ?? string.Empty) +
+                    " | online=" + network.Online +
+                    " | gatewayA=" + GatewayLabel(network.GatewayA) +
+                    " | gatewayB=" + GatewayLabel(network.GatewayB));
+            }
+        }
+
+        private static string GatewayLabel(GatewayTelemetry gateway)
+        {
+            if (gateway == null)
+                return "none";
+
+            return (gateway.VesselName ?? "Unknown") +
+                   "@" + (gateway.BodyName ?? "Unknown");
         }
 
         private static void AddNetwork(

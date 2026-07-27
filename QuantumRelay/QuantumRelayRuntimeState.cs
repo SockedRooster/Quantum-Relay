@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using QuantumRelay.Core;
+using UnityEngine;
 
 namespace QuantumRelay
 {
@@ -35,6 +36,23 @@ namespace QuantumRelay
             _online = ActiveLinkCount > 0;
             _reason = string.IsNullOrEmpty(reason) ? (_online ? "ready" : "offline") : reason;
             try { _updatedUt = Planetarium.GetUniversalTime(); } catch { _updatedUt = 0.0; }
+
+            Debug.Log(
+                "[QuantumRelay][Telemetry] runtime publish | links=" +
+                _links.Count +
+                " | active=" + ActiveLinkCount +
+                " | reason=" + _reason);
+            for (int i = 0; i < _links.Count; i++)
+            {
+                ActiveQuantumLink runtimeLink = _links[i];
+                Debug.Log(
+                    "[QuantumRelay][Telemetry] runtime link[" + i + "]" +
+                    " | id=" + (runtimeLink != null ? runtimeLink.Id : "null") +
+                    " | name=" + (runtimeLink != null ? runtimeLink.SafeDisplayName : "null") +
+                    " | networkId=" + (runtimeLink != null ? runtimeLink.NetworkId : "null") +
+                    " | online=" + (runtimeLink != null && runtimeLink.Online));
+            }
+
             QuantumRelayRegistry.PublishLinks(_links, _reason, true);
             Core.QuantumManager.Instance.NotifyTopologyChanged();
         }
