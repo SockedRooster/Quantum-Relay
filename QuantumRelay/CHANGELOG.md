@@ -21,3 +21,12 @@
 - This sprint does not inject quantum routes into stock CommNet yet.
 - Cross-network routes continue to require ordinary CommNet transfer between
   the Kerbol-side entrances.
+
+## 1.5.0 - Sprint 2A / PR1 Gateway Lifecycle
+
+- Added a save-scoped `QuantumRelayScenario` for Flight, Space Center, and Tracking Station.
+- Added explicit `QuantumManager` initialization and shutdown lifecycle.
+- Added loaded relay registration and unregistration through `ModuleQuantumRelay`.
+- Added route-cache invalidation when relay operational state changes.
+- Added startup, shutdown, registration, and unregistration diagnostics.
+- No intentional CommNet routing or gameplay behaviour changes in this PR.

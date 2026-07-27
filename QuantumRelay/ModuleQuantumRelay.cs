@@ -1,4 +1,5 @@
 using System;
+using QuantumRelay.Core;
 using UnityEngine;
 
 namespace QuantumRelay
@@ -374,6 +375,14 @@ namespace QuantumRelay
             EvaluateState(true);
             UpdateDisplayFields();
             UpdateEventVisibility();
+
+            if (HighLogic.LoadedSceneIsFlight)
+                QuantumManager.Instance.RegisterRelay(this);
+        }
+
+        public void OnDestroy()
+        {
+            QuantumManager.Instance.UnregisterRelay(this);
         }
 
         public void Update()
@@ -499,7 +508,10 @@ namespace QuantumRelay
             // This allows stronger restored gateways to reclaim the link without
             // requiring the player to switch vessels first.
             if (previousState != operationalState)
+            {
+                QuantumManager.Instance.NotifyRelayStateChanged(this);
                 QuantumRelayCommands.RequestRefresh();
+            }
         }
 
         private void RefreshDiagnostics()

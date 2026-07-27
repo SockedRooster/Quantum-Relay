@@ -58,6 +58,7 @@
     <Compile Include="RelayDefinition.cs" />
     <Compile Include="ReflectorDetector.cs" />
     <Compile Include="Services/QuantumRoutingService.cs" />
+    <Compile Include="Scenario/QuantumRelayScenario.cs" />
     <Compile Include="WormholeScanner.cs" />
   </ItemGroup>
   <ItemGroup>
