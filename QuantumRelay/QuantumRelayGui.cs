@@ -5,7 +5,7 @@ using UnityEngine;
 
 namespace QuantumRelay
 {
-    /// <summary>v1.3.1 multi-scene toolbar, network overview, settings, diagnostics and about console.</summary>
+    /// <summary>v1.6.0 multi-scene toolbar, network overview, settings, diagnostics and about console.</summary>
     [KSPAddon(KSPAddon.Startup.EveryScene, false)]
     internal sealed class QuantumRelayGui : MonoBehaviour
     {
@@ -30,6 +30,11 @@ namespace QuantumRelay
         private Vector2 _resizeStartMouse;
         private Vector2 _resizeStartSize;
         private Page _page;
+        private readonly Dictionary<string, bool> _expandedFlightNetworks =
+            new Dictionary<string, bool>(StringComparer.Ordinal);
+        private readonly Dictionary<string, bool> _expandedRegistryNetworks =
+            new Dictionary<string, bool>(StringComparer.Ordinal);
+        private Vector2 _lastSavedSize;
 
         private double _draftRadius;
         private bool _draftAutoRebuild;
@@ -60,7 +65,10 @@ public void Start()
             CopySettingsToDraft();
             _windowRect.x = QuantumRelaySettings.WindowX;
             _windowRect.y = QuantumRelaySettings.WindowY;
+            _windowRect.width = QuantumRelaySettings.WindowWidth;
+            _windowRect.height = QuantumRelaySettings.WindowHeight;
             _lastSavedPosition = new Vector2(_windowRect.x, _windowRect.y);
+            _lastSavedSize = new Vector2(_windowRect.width, _windowRect.height);
             GameEvents.onGUIApplicationLauncherReady.Add(OnAppLauncherReady);
             GameEvents.onGUIApplicationLauncherDestroyed.Add(OnAppLauncherDestroyed);
                         _quantumRelayEventsRegistered = true;
@@ -106,7 +114,7 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
                 ApplicationLauncher.AppScenes.SPACECENTER | ApplicationLauncher.AppScenes.TRACKSTATION,
                 _toolbarTexture);
 
-            Debug.Log("[QuantumRelay] v1.3.1 toolbar button created for Flight, Space Center and Tracking Station.");
+            Debug.Log("[QuantumRelay] v1.6.0 toolbar button created for Flight, Space Center and Tracking Station.");
         }
 
         private void OnAppLauncherDestroyed() { _button = null; }
@@ -132,7 +140,7 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
                 WindowId,
                 _windowRect,
                 DrawWindow,
-                "Quantum Relay v1.5.0",
+                "Quantum Relay " + QuantumRelayConstants.DisplayVersion,
                 GUILayout.Width(_windowRect.width),
                 GUILayout.Height(_windowRect.height));
 
@@ -293,18 +301,12 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
             GUILayout.Space(6f);
 
             if (flight)
-            {
-                // Each independent quantum network owns its own gateway pair.
-                // Rendering the legacy global GatewayA/GatewayB snapshot here
-                // showed only the first active network and made later networks
-                // appear to reuse its telemetry. DrawNetworkLinks now renders
-                // the correct gateway details inside each network block.
                 DrawNetworkLinks();
-            }
             else
-            {
                 DrawRegistryNetworkLinks();
-            }
+
+            GUILayout.Space(7f);
+            DrawNetworkStatistics(flight);
             GUILayout.Space(7f);
 
             GUILayout.BeginHorizontal();
@@ -312,7 +314,9 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
             {
                 if (flight) QuantumRelayCommands.RequestRefresh();
                 else QuantumRelayRegistry.Reload();
-                _localTicker = flight ? "Gateway scan requested." : "Mission Control telemetry reloaded.";
+                _localTicker = flight
+                    ? "Gateway scan requested."
+                    : "Mission Control telemetry reloaded.";
             }
 
             bool oldEnabled = GUI.enabled;
@@ -325,8 +329,11 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
             GUI.enabled = oldEnabled;
             GUILayout.EndHorizontal();
 
-            DrawGatewayActions("A", QuantumRelayRuntimeState.GatewayA);
-            DrawGatewayActions("B", QuantumRelayRuntimeState.GatewayB);
+            if (flight)
+            {
+                DrawGatewayActions("A", QuantumRelayRuntimeState.GatewayA);
+                DrawGatewayActions("B", QuantumRelayRuntimeState.GatewayB);
+            }
         }
 
         private static void DrawBridgeHeader(bool flight)
@@ -356,10 +363,10 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
             GUILayout.EndVertical();
         }
 
-        private static void DrawRegistryNetworkLinks()
+        private void DrawRegistryNetworkLinks()
         {
             GUILayout.BeginVertical(GUI.skin.box);
-            GUILayout.Label("Quantum Wormhole Network");
+            DrawSectionTitle("SAVED QUANTUM NETWORKS");
 
             IList<NetworkTelemetry> networks = QuantumRelayRegistry.Networks;
             if (networks == null || networks.Count == 0)
@@ -371,62 +378,87 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
 
             for (int i = 0; i < networks.Count; i++)
             {
+                NetworkTelemetry item = networks[i];
+                if (item == null)
+                    continue;
+
+                string itemKey = GetNetworkKey(item.Id, item.NetworkId, i);
+                GetExpanded(_expandedRegistryNetworks, itemKey);
+            }
+
+            DrawExpandCollapseControls(_expandedRegistryNetworks, networks.Count);
+
+            for (int i = 0; i < networks.Count; i++)
+            {
                 NetworkTelemetry network = networks[i];
                 if (network == null)
                     continue;
 
-                if (i > 0)
-                    GUILayout.Space(4f);
+                string key = GetNetworkKey(network.Id, network.NetworkId, i);
+                bool expanded = GetExpanded(_expandedRegistryNetworks, key);
+                string status = network.Online ? "[ONLINE]" : "[OFFLINE]";
+                string arrow = expanded ? "v" : ">";
+                string heading = arrow + " " + status + " " + SafeName(network.DisplayName);
 
                 Color old = GUI.contentColor;
                 GUI.contentColor = network.Online
                     ? Color.green
                     : new Color(1f, 0.75f, 0.2f);
 
-                GUILayout.Label(
-                    (network.Online ? "[ONLINE] " : "[OFFLINE] ") +
-                    SafeName(network.DisplayName));
+                if (GUILayout.Button(heading, GUI.skin.button))
+                    _expandedRegistryNetworks[key] = !expanded;
+
                 GUI.contentColor = old;
 
+                GUILayout.BeginVertical(GUI.skin.box);
                 GUILayout.Label(
-                    "Route: " +
                     GetTelemetryEndpointName(network.GatewayA) +
-                    " <-> " +
+                    "  <->  " +
                     GetTelemetryEndpointName(network.GatewayB));
 
                 GUILayout.Label(
-                    "Gateways: " +
                     GetTelemetryVesselName(network.GatewayA) +
-                    " <-> " +
+                    "  <->  " +
                     GetTelemetryVesselName(network.GatewayB));
 
-                GUILayout.Label(
-                    "State: " +
-                    (string.IsNullOrEmpty(network.Reason)
-                        ? (network.Online ? "ready" : "offline")
-                        : network.Reason));
-
-                if (network.GatewayA != null && network.GatewayB != null)
+                if (expanded)
                 {
-                    double aStrength = network.GatewayA.HasQuantumRelayModule
-                        ? network.GatewayA.RelaySignalStrength
-                        : 0.25;
-                    double bStrength = network.GatewayB.HasQuantumRelayModule
-                        ? network.GatewayB.RelaySignalStrength
-                        : 0.25;
-                    double effective = Math.Min(aStrength, bStrength);
-                    GUILayout.Label("Effective bridge strength: " + FormatPercent(effective));
-                    if (Math.Abs(aStrength - bStrength) > 0.001)
-                        GUILayout.Label("Limited by: " +
-                            (aStrength < bStrength
-                                ? GetTelemetryVesselName(network.GatewayA)
-                                : GetTelemetryVesselName(network.GatewayB)));
+                    GUILayout.Space(3f);
+                    GUILayout.Label(
+                        "State: " +
+                        (string.IsNullOrEmpty(network.Reason)
+                            ? (network.Online ? "ready" : "offline")
+                            : network.Reason));
+
+                    if (network.GatewayA != null && network.GatewayB != null)
+                    {
+                        double aStrength = network.GatewayA.HasQuantumRelayModule
+                            ? network.GatewayA.RelaySignalStrength
+                            : 0.25;
+                        double bStrength = network.GatewayB.HasQuantumRelayModule
+                            ? network.GatewayB.RelaySignalStrength
+                            : 0.25;
+                        double effective = Math.Min(aStrength, bStrength);
+                        GUILayout.Label("Bridge strength: " + FormatPercent(effective));
+
+                        if (Math.Abs(aStrength - bStrength) > 0.001)
+                        {
+                            GUILayout.Label(
+                                "Limited by: " +
+                                (aStrength < bStrength
+                                    ? GetTelemetryVesselName(network.GatewayA)
+                                    : GetTelemetryVesselName(network.GatewayB)));
+                        }
+                    }
+
+                    GUILayout.Space(4f);
+                    DrawGatewayTelemetry("GATEWAY A", network.GatewayA);
+                    GUILayout.Space(3f);
+                    DrawGatewayTelemetry("GATEWAY B", network.GatewayB);
                 }
 
-                GUILayout.Space(3f);
-                DrawGatewayTelemetry("Gateway A", network.GatewayA);
-                GUILayout.Space(3f);
-                DrawGatewayTelemetry("Gateway B", network.GatewayB);
+                GUILayout.EndVertical();
+                GUILayout.Space(4f);
             }
 
             GUILayout.EndVertical();
@@ -530,12 +562,12 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
                 : "No gateway";
         }
 
-        private static void DrawNetworkLinks()
+        private void DrawNetworkLinks()
         {
             GUILayout.BeginVertical(GUI.skin.box);
-            GUILayout.Label("Quantum Wormhole Network");
+            DrawSectionTitle("LIVE QUANTUM NETWORKS");
 
-            System.Collections.Generic.IList<QuantumRelay.Core.ActiveQuantumLink> links =
+            IList<QuantumRelay.Core.ActiveQuantumLink> links =
                 QuantumRelayRuntimeState.Links;
 
             if (links == null || links.Count == 0)
@@ -547,58 +579,256 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
 
             for (int i = 0; i < links.Count; i++)
             {
+                QuantumRelay.Core.ActiveQuantumLink item = links[i];
+                if (item == null)
+                    continue;
+
+                string itemKey = GetNetworkKey(item.Id, item.NetworkId, i);
+                GetExpanded(_expandedFlightNetworks, itemKey);
+            }
+
+            DrawExpandCollapseControls(_expandedFlightNetworks, links.Count);
+
+            for (int i = 0; i < links.Count; i++)
+            {
                 QuantumRelay.Core.ActiveQuantumLink link = links[i];
                 if (link == null)
                     continue;
 
-                if (i > 0)
-                    GUILayout.Space(4f);
+                string key = GetNetworkKey(link.Id, link.NetworkId, i);
+                bool expanded = GetExpanded(_expandedFlightNetworks, key);
+                string status = link.Online ? "[ONLINE]" : "[OFFLINE]";
+                string arrow = expanded ? "v" : ">";
+                string heading = arrow + " " + status + " " + SafeName(link.SafeDisplayName);
 
                 Color old = GUI.contentColor;
                 GUI.contentColor = link.Online
                     ? Color.green
                     : new Color(1f, 0.75f, 0.2f);
 
-                GUILayout.Label(
-                    (link.Online ? "[ONLINE] " : "[OFFLINE] ") +
-                    SafeName(link.SafeDisplayName));
+                if (GUILayout.Button(heading, GUI.skin.button))
+                    _expandedFlightNetworks[key] = !expanded;
+
                 GUI.contentColor = old;
 
+                GUILayout.BeginVertical(GUI.skin.box);
                 GUILayout.Label(
-                    "Route: " +
                     GetLinkEndpointName(link.GatewayA) +
-                    " <-> " +
+                    "  <->  " +
                     GetLinkEndpointName(link.GatewayB));
 
                 GUILayout.Label(
-                    "Gateways: " +
                     GetLinkVesselName(link.GatewayA) +
-                    " <-> " +
+                    "  <->  " +
                     GetLinkVesselName(link.GatewayB));
 
-                GUILayout.Label(
-                    "State: " +
-                    (string.IsNullOrEmpty(link.Reason)
-                        ? (link.Online ? "ready" : "offline")
-                        : link.Reason));
-                if (link.GatewayA != null && link.GatewayB != null)
+                if (expanded)
                 {
-                    double aStrength = link.GatewayA.HasQuantumRelayModule ? link.GatewayA.RelaySignalStrength : 0.25;
-                    double bStrength = link.GatewayB.HasQuantumRelayModule ? link.GatewayB.RelaySignalStrength : 0.25;
-                    double effective = Math.Min(aStrength, bStrength);
-                    GUILayout.Label("Effective bridge strength: " + FormatPercent(effective));
-                    if (Math.Abs(aStrength - bStrength) > 0.001)
-                        GUILayout.Label("Limited by: " + (aStrength < bStrength
-                            ? GetLinkVesselName(link.GatewayA) : GetLinkVesselName(link.GatewayB)));
+                    GUILayout.Space(3f);
+                    GUILayout.Label(
+                        "State: " +
+                        (string.IsNullOrEmpty(link.Reason)
+                            ? (link.Online ? "ready" : "offline")
+                            : link.Reason));
+
+                    if (link.GatewayA != null && link.GatewayB != null)
+                    {
+                        double aStrength = link.GatewayA.HasQuantumRelayModule
+                            ? link.GatewayA.RelaySignalStrength
+                            : 0.25;
+                        double bStrength = link.GatewayB.HasQuantumRelayModule
+                            ? link.GatewayB.RelaySignalStrength
+                            : 0.25;
+                        double effective = Math.Min(aStrength, bStrength);
+                        GUILayout.Label("Bridge strength: " + FormatPercent(effective));
+
+                        if (Math.Abs(aStrength - bStrength) > 0.001)
+                        {
+                            GUILayout.Label(
+                                "Limited by: " +
+                                (aStrength < bStrength
+                                    ? GetLinkVesselName(link.GatewayA)
+                                    : GetLinkVesselName(link.GatewayB)));
+                        }
+                    }
+
+                    GUILayout.Space(4f);
+                    DrawGatewaySummary("GATEWAY A", link.GatewayA);
+                    GUILayout.Space(3f);
+                    DrawGatewaySummary("GATEWAY B", link.GatewayB);
                 }
 
-                GUILayout.Space(3f);
-                DrawGatewaySummary("Gateway A", link.GatewayA);
-                GUILayout.Space(3f);
-                DrawGatewaySummary("Gateway B", link.GatewayB);
+                GUILayout.EndVertical();
+                GUILayout.Space(4f);
             }
 
             GUILayout.EndVertical();
+        }
+
+        private static void DrawSectionTitle(string title)
+        {
+            Color old = GUI.contentColor;
+            GUI.contentColor = new Color(0.55f, 0.9f, 1f);
+            GUILayout.Label(title);
+            GUI.contentColor = old;
+        }
+
+        private static string GetNetworkKey(
+            string id,
+            string networkId,
+            int index)
+        {
+            if (!string.IsNullOrEmpty(id))
+                return id;
+            if (!string.IsNullOrEmpty(networkId))
+                return networkId;
+            return "network-" + index;
+        }
+
+        private static bool GetExpanded(
+            IDictionary<string, bool> states,
+            string key)
+        {
+            bool expanded;
+            if (states.TryGetValue(key, out expanded))
+                return expanded;
+
+            states[key] = true;
+            return true;
+        }
+
+        private static void DrawExpandCollapseControls(
+            IDictionary<string, bool> states,
+            int networkCount)
+        {
+            GUILayout.BeginHorizontal();
+            GUILayout.Label(
+                networkCount + (networkCount == 1 ? " network" : " networks"));
+
+            if (GUILayout.Button("Expand All", GUILayout.Width(90f)))
+                SetAllExpanded(states, true);
+
+            if (GUILayout.Button("Collapse All", GUILayout.Width(90f)))
+                SetAllExpanded(states, false);
+
+            GUILayout.EndHorizontal();
+            GUILayout.Space(3f);
+        }
+
+        private static void SetAllExpanded(
+            IDictionary<string, bool> states,
+            bool expanded)
+        {
+            List<string> keys = new List<string>(states.Keys);
+            for (int i = 0; i < keys.Count; i++)
+                states[keys[i]] = expanded;
+        }
+
+        private static void DrawNetworkStatistics(bool flight)
+        {
+            int networks = 0;
+            int online = 0;
+            int gateways = 0;
+            double power = 0.0;
+            HashSet<Guid> gatewayIds = new HashSet<Guid>();
+
+            if (flight)
+            {
+                IList<QuantumRelay.Core.ActiveQuantumLink> links =
+                    QuantumRelayRuntimeState.Links;
+
+                if (links != null)
+                {
+                    for (int i = 0; i < links.Count; i++)
+                    {
+                        QuantumRelay.Core.ActiveQuantumLink link = links[i];
+                        if (link == null)
+                            continue;
+
+                        networks++;
+                        if (link.Online)
+                            online++;
+
+                        AddFlightGatewayStatistic(link.GatewayA, gatewayIds, ref power);
+                        AddFlightGatewayStatistic(link.GatewayB, gatewayIds, ref power);
+                    }
+                }
+            }
+            else
+            {
+                IList<NetworkTelemetry> saved = QuantumRelayRegistry.Networks;
+                if (saved != null)
+                {
+                    for (int i = 0; i < saved.Count; i++)
+                    {
+                        NetworkTelemetry network = saved[i];
+                        if (network == null)
+                            continue;
+
+                        networks++;
+                        if (network.Online)
+                            online++;
+
+                        AddRegistryGatewayStatistic(network.GatewayA, gatewayIds, ref power);
+                        AddRegistryGatewayStatistic(network.GatewayB, gatewayIds, ref power);
+                    }
+                }
+            }
+
+            gateways = gatewayIds.Count;
+
+            GUILayout.BeginVertical(GUI.skin.box);
+            DrawSectionTitle("NETWORK SUMMARY");
+            GUILayout.BeginHorizontal();
+            DrawStatistic("Networks", networks.ToString());
+            DrawStatistic("Online", online.ToString());
+            DrawStatistic("Offline", Math.Max(0, networks - online).ToString());
+            DrawStatistic("Gateways", gateways.ToString());
+            GUILayout.EndHorizontal();
+            GUILayout.Label(
+                (flight ? "Live" : "Last known") +
+                " relay draw: " +
+                FormatNumber(power) +
+                " EC/s");
+            GUILayout.EndVertical();
+        }
+
+        private static void DrawStatistic(string label, string value)
+        {
+            GUILayout.BeginVertical(GUI.skin.box);
+            GUILayout.Label(value);
+            GUILayout.Label(label);
+            GUILayout.EndVertical();
+        }
+
+        private static void AddFlightGatewayStatistic(
+            GatewayCandidate gateway,
+            ISet<Guid> ids,
+            ref double power)
+        {
+            if (gateway == null || gateway.Vessel == null)
+                return;
+
+            Guid id = gateway.Vessel.id;
+            if (id == Guid.Empty || !ids.Add(id))
+                return;
+
+            power += Math.Max(0.0, gateway.RelayPowerRate);
+        }
+
+        private static void AddRegistryGatewayStatistic(
+            GatewayTelemetry gateway,
+            ISet<Guid> ids,
+            ref double power)
+        {
+            if (gateway == null || !gateway.IsKnown)
+                return;
+
+            Guid id = gateway.VesselId;
+            if (id == Guid.Empty || !ids.Add(id))
+                return;
+
+            power += Math.Max(0.0, gateway.RelayPowerRate);
         }
 
         private static void DrawFlightPowerSummary()
@@ -1015,20 +1245,45 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
 
         private void QueueWindowPositionSave()
         {
-            Vector2 current = new Vector2(_windowRect.x, _windowRect.y);
-            if ((current - _lastSavedPosition).sqrMagnitude > 1f)
+            Vector2 currentPosition = new Vector2(_windowRect.x, _windowRect.y);
+            Vector2 currentSize = new Vector2(_windowRect.width, _windowRect.height);
+
+            bool positionChanged =
+                (currentPosition - _lastSavedPosition).sqrMagnitude > 1f;
+            bool sizeChanged =
+                (currentSize - _lastSavedSize).sqrMagnitude > 1f;
+
+            if (positionChanged || sizeChanged)
                 _savePositionAfter = Time.realtimeSinceStartup + 0.75f;
 
-            if (_savePositionAfter > 0f && Time.realtimeSinceStartup >= _savePositionAfter)
+            if (_savePositionAfter > 0f &&
+                Time.realtimeSinceStartup >= _savePositionAfter)
+            {
                 SaveWindowPositionNow();
+            }
         }
 
         private void SaveWindowPositionNow()
         {
-            Vector2 current = new Vector2(_windowRect.x, _windowRect.y);
-            if ((current - _lastSavedPosition).sqrMagnitude <= 1f) return;
-            QuantumRelaySettings.SaveWindowPosition(current.x, current.y);
-            _lastSavedPosition = current;
+            Vector2 currentPosition = new Vector2(_windowRect.x, _windowRect.y);
+            Vector2 currentSize = new Vector2(_windowRect.width, _windowRect.height);
+
+            bool positionChanged =
+                (currentPosition - _lastSavedPosition).sqrMagnitude > 1f;
+            bool sizeChanged =
+                (currentSize - _lastSavedSize).sqrMagnitude > 1f;
+
+            if (!positionChanged && !sizeChanged)
+                return;
+
+            QuantumRelaySettings.SaveWindowLayout(
+                currentPosition.x,
+                currentPosition.y,
+                currentSize.x,
+                currentSize.y);
+
+            _lastSavedPosition = currentPosition;
+            _lastSavedSize = currentSize;
             _savePositionAfter = 0f;
         }
 

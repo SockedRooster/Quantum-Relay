@@ -418,13 +418,13 @@
     "C:\\Users\\rida6\\.nuget\\packages\\": {}
   },
   "project": {
-    "version": "1.5.0",
+    "version": "1.6.0",
     "restore": {
-      "projectUniqueName": "c:\\Users\\rida6\\Projects\\QuantumRelay\\Quantum-Relay\\QuantumRelay\\QuantumRelay.csproj",
+      "projectUniqueName": "C:\\Users\\rida6\\Projects\\QuantumRelay\\Quantum-Relay\\QuantumRelay\\QuantumRelay.csproj",
       "projectName": "QuantumRelay",
-      "projectPath": "c:\\Users\\rida6\\Projects\\QuantumRelay\\Quantum-Relay\\QuantumRelay\\QuantumRelay.csproj",
+      "projectPath": "C:\\Users\\rida6\\Projects\\QuantumRelay\\Quantum-Relay\\QuantumRelay\\QuantumRelay.csproj",
       "packagesPath": "C:\\Users\\rida6\\.nuget\\packages\\",
-      "outputPath": "c:\\Users\\rida6\\Projects\\QuantumRelay\\Quantum-Relay\\QuantumRelay\\obj\\",
+      "outputPath": "C:\\Users\\rida6\\Projects\\QuantumRelay\\Quantum-Relay\\QuantumRelay\\obj\\",
       "projectStyle": "PackageReference",
       "configFilePaths": [
         "C:\\Users\\rida6\\AppData\\Roaming\\NuGet\\NuGet.Config"

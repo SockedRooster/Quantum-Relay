@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.6.0 Preview 1 — Interface Polish
+
+- Added collapsible live and saved network cards.
+- Added Expand All and Collapse All controls.
+- Added a network summary panel with online, offline, gateway, and power statistics.
+- Improved network headings and visual grouping for faster scanning.
+- Window width and height are now saved alongside its screen position.
+- Corrected version metadata so the GUI, assembly, and project report the same version.
+
 ## 1.5.0 — Quantum Networks
 
 ### Added

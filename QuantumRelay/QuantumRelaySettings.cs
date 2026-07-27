@@ -20,6 +20,8 @@ namespace QuantumRelay
         public static bool DebugLogging { get; private set; }
         public static float WindowX { get; private set; } = 260f;
         public static float WindowY { get; private set; } = 100f;
+        public static float WindowWidth { get; private set; } = 560f;
+        public static float WindowHeight { get; private set; } = 700f;
 
         // Expensive work is deliberately slow and event-driven.
         public const double FullGatewayScanIntervalSeconds = 15.0;
@@ -74,6 +76,12 @@ namespace QuantumRelay
                 DebugLogging = ReadBool(node, "debugLogging", false);
                 WindowX = ReadFloat(node, "windowX", 260f);
                 WindowY = ReadFloat(node, "windowY", 100f);
+                WindowWidth = Math.Max(
+                    460f,
+                    ReadFloat(node, "windowWidth", 560f));
+                WindowHeight = Math.Max(
+                    420f,
+                    ReadFloat(node, "windowHeight", 700f));
 
                 Debug.Log("[QuantumRelay] Settings loaded | radius=" +
                           GatewayRadiusMetres.ToString("0", CultureInfo.InvariantCulture) + "m");
@@ -111,6 +119,8 @@ namespace QuantumRelay
             DebugLogging = false;
             WindowX = 260f;
             WindowY = 100f;
+            WindowWidth = 560f;
+            WindowHeight = 700f;
             if (save) Save();
         }
 
@@ -129,6 +139,8 @@ namespace QuantumRelay
                 node.AddValue("debugLogging", DebugLogging);
                 node.AddValue("windowX", WindowX.ToString("0.##", CultureInfo.InvariantCulture));
                 node.AddValue("windowY", WindowY.ToString("0.##", CultureInfo.InvariantCulture));
+                node.AddValue("windowWidth", WindowWidth.ToString("0.##", CultureInfo.InvariantCulture));
+                node.AddValue("windowHeight", WindowHeight.ToString("0.##", CultureInfo.InvariantCulture));
                 node.Save(SettingsPath);
             }
             catch (Exception ex)
@@ -140,8 +152,19 @@ namespace QuantumRelay
 
         public static void SaveWindowPosition(float x, float y)
         {
+            SaveWindowLayout(x, y, WindowWidth, WindowHeight);
+        }
+
+        public static void SaveWindowLayout(
+            float x,
+            float y,
+            float width,
+            float height)
+        {
             WindowX = Math.Max(0f, x);
             WindowY = Math.Max(0f, y);
+            WindowWidth = Math.Max(460f, width);
+            WindowHeight = Math.Max(420f, height);
             Save();
         }
 
