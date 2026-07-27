@@ -24,7 +24,7 @@ namespace QuantumRelay
             QuantumManager.Instance.Initialize("QuantumRelayScenario");
 
             Debug.Log(
-                "[QuantumRelay] v" +
+                "[QuantumRelay] " +
                 QuantumRelayConstants.DisplayVersion +
                 " scenario initialized" +
                 " | scene=" + HighLogic.LoadedScene);

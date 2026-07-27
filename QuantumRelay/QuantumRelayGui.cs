@@ -18,6 +18,7 @@ namespace QuantumRelay
         private const int ResizeControlHint = 0x51525253;
 
         private enum Page { Status, Settings, Diagnostics, About }
+        private enum NetworkSort { Name, Status, Gateway }
 
         private ApplicationLauncherButton _button;
         private Texture2D _toolbarTexture;
@@ -30,6 +31,9 @@ namespace QuantumRelay
         private Vector2 _resizeStartMouse;
         private Vector2 _resizeStartSize;
         private Page _page;
+        private NetworkSort _networkSort = NetworkSort.Name;
+        private string _networkFilter = string.Empty;
+        private bool _onlineOnly;
         private readonly Dictionary<string, bool> _expandedFlightNetworks =
             new Dictionary<string, bool>(StringComparer.Ordinal);
         private readonly Dictionary<string, bool> _expandedRegistryNetworks =
@@ -114,7 +118,7 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
                 ApplicationLauncher.AppScenes.SPACECENTER | ApplicationLauncher.AppScenes.TRACKSTATION,
                 _toolbarTexture);
 
-            Debug.Log("[QuantumRelay] v1.6.0 toolbar button created for Flight, Space Center and Tracking Station.");
+            Debug.Log("[QuantumRelay] v1.6.0 RC1 toolbar button created for Flight, Space Center and Tracking Station.");
         }
 
         private void OnAppLauncherDestroyed() { _button = null; }
@@ -299,6 +303,8 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
             bool flight = HighLogic.LoadedSceneIsFlight;
             DrawBridgeHeader(flight);
             GUILayout.Space(6f);
+            DrawNetworkControls();
+            GUILayout.Space(6f);
 
             if (flight)
                 DrawNetworkLinks();
@@ -363,13 +369,159 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
             GUILayout.EndVertical();
         }
 
+        private void DrawNetworkControls()
+        {
+            GUILayout.BeginVertical(GUI.skin.box);
+            DrawSectionTitle("MISSION CONTROL FILTERS");
+
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("Search", GUILayout.Width(55f));
+            _networkFilter = GUILayout.TextField(
+                _networkFilter ?? string.Empty,
+                GUILayout.MinWidth(140f));
+            if (GUILayout.Button("Clear", GUILayout.Width(55f)))
+                _networkFilter = string.Empty;
+            GUILayout.EndHorizontal();
+
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("Sort", GUILayout.Width(55f));
+            if (GUILayout.Toggle(_networkSort == NetworkSort.Name, "Name", GUI.skin.button))
+                _networkSort = NetworkSort.Name;
+            if (GUILayout.Toggle(_networkSort == NetworkSort.Status, "Status", GUI.skin.button))
+                _networkSort = NetworkSort.Status;
+            if (GUILayout.Toggle(_networkSort == NetworkSort.Gateway, "Gateway", GUI.skin.button))
+                _networkSort = NetworkSort.Gateway;
+            GUILayout.EndHorizontal();
+
+            _onlineOnly = GUILayout.Toggle(_onlineOnly, "Show online networks only");
+            GUILayout.EndVertical();
+        }
+
+        private List<QuantumRelay.Core.ActiveQuantumLink> GetVisibleFlightNetworks()
+        {
+            List<QuantumRelay.Core.ActiveQuantumLink> result =
+                new List<QuantumRelay.Core.ActiveQuantumLink>();
+            IList<QuantumRelay.Core.ActiveQuantumLink> links =
+                QuantumRelayRuntimeState.Links;
+
+            if (links != null)
+            {
+                for (int i = 0; i < links.Count; i++)
+                {
+                    QuantumRelay.Core.ActiveQuantumLink link = links[i];
+                    if (link == null || (_onlineOnly && !link.Online))
+                        continue;
+                    if (!MatchesFilter(
+                        link.SafeDisplayName,
+                        GetLinkVesselName(link.GatewayA),
+                        GetLinkVesselName(link.GatewayB),
+                        GetLinkEndpointName(link.GatewayA),
+                        GetLinkEndpointName(link.GatewayB)))
+                        continue;
+                    result.Add(link);
+                }
+            }
+
+            result.Sort(CompareFlightNetworks);
+            return result;
+        }
+
+        private List<NetworkTelemetry> GetVisibleRegistryNetworks()
+        {
+            List<NetworkTelemetry> result = new List<NetworkTelemetry>();
+            IList<NetworkTelemetry> networks = QuantumRelayRegistry.Networks;
+
+            if (networks != null)
+            {
+                for (int i = 0; i < networks.Count; i++)
+                {
+                    NetworkTelemetry network = networks[i];
+                    if (network == null || (_onlineOnly && !network.Online))
+                        continue;
+                    if (!MatchesFilter(
+                        network.DisplayName,
+                        GetTelemetryVesselName(network.GatewayA),
+                        GetTelemetryVesselName(network.GatewayB),
+                        GetTelemetryEndpointName(network.GatewayA),
+                        GetTelemetryEndpointName(network.GatewayB)))
+                        continue;
+                    result.Add(network);
+                }
+            }
+
+            result.Sort(CompareRegistryNetworks);
+            return result;
+        }
+
+        private bool MatchesFilter(params string[] values)
+        {
+            string filter = (_networkFilter ?? string.Empty).Trim();
+            if (filter.Length == 0)
+                return true;
+
+            for (int i = 0; i < values.Length; i++)
+            {
+                if (!string.IsNullOrEmpty(values[i]) &&
+                    values[i].IndexOf(filter, StringComparison.OrdinalIgnoreCase) >= 0)
+                    return true;
+            }
+
+            return false;
+        }
+
+        private int CompareFlightNetworks(
+            QuantumRelay.Core.ActiveQuantumLink left,
+            QuantumRelay.Core.ActiveQuantumLink right)
+        {
+            if (_networkSort == NetworkSort.Status)
+            {
+                int status = right.Online.CompareTo(left.Online);
+                if (status != 0) return status;
+            }
+            else if (_networkSort == NetworkSort.Gateway)
+            {
+                int gateway = string.Compare(
+                    GetLinkVesselName(left.GatewayA),
+                    GetLinkVesselName(right.GatewayA),
+                    StringComparison.OrdinalIgnoreCase);
+                if (gateway != 0) return gateway;
+            }
+
+            return string.Compare(
+                left.SafeDisplayName,
+                right.SafeDisplayName,
+                StringComparison.OrdinalIgnoreCase);
+        }
+
+        private int CompareRegistryNetworks(NetworkTelemetry left, NetworkTelemetry right)
+        {
+            if (_networkSort == NetworkSort.Status)
+            {
+                int status = right.Online.CompareTo(left.Online);
+                if (status != 0) return status;
+            }
+            else if (_networkSort == NetworkSort.Gateway)
+            {
+                int gateway = string.Compare(
+                    GetTelemetryVesselName(left.GatewayA),
+                    GetTelemetryVesselName(right.GatewayA),
+                    StringComparison.OrdinalIgnoreCase);
+                if (gateway != 0) return gateway;
+            }
+
+            return string.Compare(
+                left.DisplayName,
+                right.DisplayName,
+                StringComparison.OrdinalIgnoreCase);
+        }
+
         private void DrawRegistryNetworkLinks()
         {
             GUILayout.BeginVertical(GUI.skin.box);
             DrawSectionTitle("SAVED QUANTUM NETWORKS");
 
-            IList<NetworkTelemetry> networks = QuantumRelayRegistry.Networks;
-            if (networks == null || networks.Count == 0)
+            List<NetworkTelemetry> networks = GetVisibleRegistryNetworks();
+            if (networks.Count == 0)
             {
                 GUILayout.Label("No saved network telemetry.");
                 GUILayout.EndVertical();
@@ -567,10 +719,10 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
             GUILayout.BeginVertical(GUI.skin.box);
             DrawSectionTitle("LIVE QUANTUM NETWORKS");
 
-            IList<QuantumRelay.Core.ActiveQuantumLink> links =
-                QuantumRelayRuntimeState.Links;
+            List<QuantumRelay.Core.ActiveQuantumLink> links =
+                GetVisibleFlightNetworks();
 
-            if (links == null || links.Count == 0)
+            if (links.Count == 0)
             {
                 GUILayout.Label("No wormhole links configured.");
                 GUILayout.EndVertical();
