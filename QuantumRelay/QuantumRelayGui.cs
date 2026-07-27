@@ -10,17 +10,25 @@ namespace QuantumRelay
     internal sealed class QuantumRelayGui : MonoBehaviour
     {
         private const int WindowId = 0x51524C59;
-        private const float WindowWidth = 420f;
+        private const float DefaultWindowWidth = 560f;
+        private const float DefaultWindowHeight = 700f;
+        private const float MinimumWindowWidth = 460f;
+        private const float MinimumWindowHeight = 420f;
+        private const float ResizeGripSize = 24f;
+        private const int ResizeControlHint = 0x51525253;
 
         private enum Page { Status, Settings, Diagnostics, About }
 
         private ApplicationLauncherButton _button;
         private Texture2D _toolbarTexture;
-        private Rect _windowRect = new Rect(260f, 100f, WindowWidth, 430f);
+        private Rect _windowRect = new Rect(260f, 100f, DefaultWindowWidth, DefaultWindowHeight);
         private Vector2 _lastSavedPosition;
         private float _savePositionAfter;
         private Vector2 _scroll;
         private bool _visible;
+        private bool _resizing;
+        private Vector2 _resizeStartMouse;
+        private Vector2 _resizeStartSize;
         private Page _page;
 
         private double _draftRadius;
@@ -119,10 +127,24 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
             if (!_quantumRelaySceneActive || !IsSupportedScene()) return;
             if (!_visible) return;
             GUI.skin = HighLogic.Skin;
-            _windowRect = GUILayout.Window(WindowId, _windowRect, DrawWindow,
-                "Quantum Relay v1.3.1", GUILayout.Width(WindowWidth));
-            _windowRect.x = Mathf.Clamp(_windowRect.x, 0f, Mathf.Max(0f, Screen.width - _windowRect.width));
-            _windowRect.y = Mathf.Clamp(_windowRect.y, 0f, Mathf.Max(0f, Screen.height - 36f));
+            ClampWindowSize();
+            _windowRect = GUILayout.Window(
+                WindowId,
+                _windowRect,
+                DrawWindow,
+                "Quantum Relay v1.5.0",
+                GUILayout.Width(_windowRect.width),
+                GUILayout.Height(_windowRect.height));
+
+            ClampWindowSize();
+            _windowRect.x = Mathf.Clamp(
+                _windowRect.x,
+                0f,
+                Mathf.Max(0f, Screen.width - _windowRect.width));
+            _windowRect.y = Mathf.Clamp(
+                _windowRect.y,
+                0f,
+                Mathf.Max(0f, Screen.height - 36f));
             QueueWindowPositionSave();
         }
 
@@ -132,7 +154,12 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
             DrawTabs();
             GUILayout.Space(5f);
 
-            _scroll = GUILayout.BeginScrollView(_scroll, GUILayout.MinHeight(275f), GUILayout.MaxHeight(510f));
+            float scrollHeight = Mathf.Max(
+                220f,
+                _windowRect.height - 150f);
+            _scroll = GUILayout.BeginScrollView(
+                _scroll,
+                GUILayout.Height(scrollHeight));
             switch (_page)
             {
                 case Page.Status: DrawStatusPage(); break;
@@ -154,7 +181,99 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
             }
 
             GUILayout.EndVertical();
-            GUI.DragWindow(new Rect(0f, 0f, 10000f, 28f));
+
+            DrawResizeGrip();
+            HandleResize();
+            if (!_resizing)
+                GUI.DragWindow(new Rect(0f, 0f, _windowRect.width - ResizeGripSize, 28f));
+        }
+
+        private void DrawResizeGrip()
+        {
+            Rect grip = new Rect(
+                _windowRect.width - ResizeGripSize,
+                _windowRect.height - ResizeGripSize,
+                ResizeGripSize,
+                ResizeGripSize);
+
+            GUI.Box(grip, "↘");
+        }
+
+        private void HandleResize()
+        {
+            Event current = Event.current;
+            int controlId = GUIUtility.GetControlID(
+                ResizeControlHint,
+                FocusType.Passive);
+
+            Rect grip = new Rect(
+                _windowRect.width - ResizeGripSize,
+                _windowRect.height - ResizeGripSize,
+                ResizeGripSize,
+                ResizeGripSize);
+
+            EventType eventType = current.GetTypeForControl(controlId);
+
+            if (eventType == EventType.MouseDown &&
+                current.button == 0 &&
+                grip.Contains(current.mousePosition))
+            {
+                GUIUtility.hotControl = controlId;
+                GUIUtility.keyboardControl = 0;
+                _resizing = true;
+                _resizeStartMouse = GUIUtility.GUIToScreenPoint(
+                    current.mousePosition);
+                _resizeStartSize = new Vector2(
+                    _windowRect.width,
+                    _windowRect.height);
+                current.Use();
+                return;
+            }
+
+            if (GUIUtility.hotControl != controlId || !_resizing)
+                return;
+
+            if (eventType == EventType.MouseDrag)
+            {
+                Vector2 screenMouse = GUIUtility.GUIToScreenPoint(
+                    current.mousePosition);
+                Vector2 delta = screenMouse - _resizeStartMouse;
+
+                _windowRect.width = _resizeStartSize.x + delta.x;
+                _windowRect.height = _resizeStartSize.y + delta.y;
+                ClampWindowSize();
+                current.Use();
+                return;
+            }
+
+            // rawType remains MouseUp even when IMGUI changes the routed event
+            // type because the pointer has moved outside the resize control.
+            if (eventType == EventType.MouseUp ||
+                current.rawType == EventType.MouseUp)
+            {
+                GUIUtility.hotControl = 0;
+                _resizing = false;
+                current.Use();
+            }
+        }
+
+        private void ClampWindowSize()
+        {
+            float maximumWidth = Mathf.Max(
+                MinimumWindowWidth,
+                Screen.width - 20f);
+            float maximumHeight = Mathf.Max(
+                MinimumWindowHeight,
+                Screen.height - 20f);
+
+            _windowRect.width = Mathf.Clamp(
+                _windowRect.width,
+                MinimumWindowWidth,
+                maximumWidth);
+            _windowRect.height = Mathf.Clamp(
+                _windowRect.height,
+                MinimumWindowHeight,
+                maximumHeight);
         }
 
         private void DrawTabs()
