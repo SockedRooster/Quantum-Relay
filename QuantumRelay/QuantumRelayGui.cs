@@ -18,7 +18,7 @@ namespace QuantumRelay
         private const int ResizeControlHint = 0x51525253;
 
         private enum Page { Status, Settings, Diagnostics, About }
-        private enum NetworkSort { Name, Status, Gateway }
+        private enum NetworkSort { Name, Gateway }
 
         private ApplicationLauncherButton _button;
         private Texture2D _toolbarTexture;
@@ -40,7 +40,6 @@ namespace QuantumRelay
             new Dictionary<string, bool>(StringComparer.Ordinal);
         private Vector2 _lastSavedSize;
 
-        private double _draftRadius;
         private bool _draftAutoRebuild;
         private bool _draftMessages;
         private bool _draftDebug;
@@ -118,7 +117,7 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
                 ApplicationLauncher.AppScenes.SPACECENTER | ApplicationLauncher.AppScenes.TRACKSTATION,
                 _toolbarTexture);
 
-            Debug.Log("[QuantumRelay] v1.6.0 RC1 toolbar button created for Flight, Space Center and Tracking Station.");
+            Debug.Log("[QuantumRelay] " + QuantumRelayConstants.DisplayVersion + " toolbar button created for Flight, Space Center and Tracking Station.");
         }
 
         private void OnAppLauncherDestroyed() { _button = null; }
@@ -387,8 +386,6 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
             GUILayout.Label("Sort", GUILayout.Width(55f));
             if (GUILayout.Toggle(_networkSort == NetworkSort.Name, "Name", GUI.skin.button))
                 _networkSort = NetworkSort.Name;
-            if (GUILayout.Toggle(_networkSort == NetworkSort.Status, "Status", GUI.skin.button))
-                _networkSort = NetworkSort.Status;
             if (GUILayout.Toggle(_networkSort == NetworkSort.Gateway, "Gateway", GUI.skin.button))
                 _networkSort = NetworkSort.Gateway;
             GUILayout.EndHorizontal();
@@ -473,12 +470,7 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
             QuantumRelay.Core.ActiveQuantumLink left,
             QuantumRelay.Core.ActiveQuantumLink right)
         {
-            if (_networkSort == NetworkSort.Status)
-            {
-                int status = right.Online.CompareTo(left.Online);
-                if (status != 0) return status;
-            }
-            else if (_networkSort == NetworkSort.Gateway)
+            if (_networkSort == NetworkSort.Gateway)
             {
                 int gateway = string.Compare(
                     GetLinkVesselName(left.GatewayA),
@@ -495,12 +487,7 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
 
         private int CompareRegistryNetworks(NetworkTelemetry left, NetworkTelemetry right)
         {
-            if (_networkSort == NetworkSort.Status)
-            {
-                int status = right.Online.CompareTo(left.Online);
-                if (status != 0) return status;
-            }
-            else if (_networkSort == NetworkSort.Gateway)
+            if (_networkSort == NetworkSort.Gateway)
             {
                 int gateway = string.Compare(
                     GetTelemetryVesselName(left.GatewayA),
@@ -548,9 +535,9 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
 
                 string key = GetNetworkKey(network.Id, network.NetworkId, i);
                 bool expanded = GetExpanded(_expandedRegistryNetworks, key);
-                string status = network.Online ? "[ONLINE]" : "[OFFLINE]";
+                string status = network.Online ? "● Online" : "● Offline";
                 string arrow = expanded ? "v" : ">";
-                string heading = arrow + " " + status + " " + SafeName(network.DisplayName);
+                string heading = arrow + "  " + status + "  " + SafeName(network.DisplayName);
 
                 Color old = GUI.contentColor;
                 GUI.contentColor = network.Online
@@ -749,9 +736,9 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
 
                 string key = GetNetworkKey(link.Id, link.NetworkId, i);
                 bool expanded = GetExpanded(_expandedFlightNetworks, key);
-                string status = link.Online ? "[ONLINE]" : "[OFFLINE]";
+                string status = link.Online ? "● Online" : "● Offline";
                 string arrow = expanded ? "v" : ">";
-                string heading = arrow + " " + status + " " + SafeName(link.SafeDisplayName);
+                string heading = arrow + "  " + status + "  " + SafeName(link.SafeDisplayName);
 
                 Color old = GUI.contentColor;
                 GUI.contentColor = link.Online
@@ -1154,9 +1141,10 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
             GUILayout.Label("Quantum Link Configuration");
             GUILayout.Space(5f);
 
-            DrawStepSetting("Gateway activation radius", FormatNumber(_draftRadius / 1000.0) + " km",
-                delegate { _draftRadius = Math.Max(100000.0, _draftRadius - 25000.0); },
-                delegate { _draftRadius = Math.Min(500000.0, _draftRadius + 25000.0); });
+            GUILayout.BeginVertical(GUI.skin.box);
+            GUILayout.Label("Quantum Relay manages gateway distance automatically.");
+            GUILayout.Label("Version: " + QuantumRelayConstants.DisplayVersion);
+            GUILayout.EndVertical();
 
             GUILayout.Space(6f);
             _draftAutoRebuild = GUILayout.Toggle(_draftAutoRebuild, "Automatically rebuild CommNet after changes");
@@ -1166,7 +1154,7 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
 
             if (GUILayout.Button("Apply and Save"))
             {
-                bool networkChanged = QuantumRelaySettings.Apply(_draftRadius,
+                bool networkChanged = QuantumRelaySettings.Apply(
                     _draftAutoRebuild, _draftMessages, _draftDebug, true);
                 if (networkChanged)
                 {
@@ -1337,7 +1325,6 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
 
         private void CopySettingsToDraft()
         {
-            _draftRadius = QuantumRelaySettings.GatewayRadiusMetres;
             _draftAutoRebuild = QuantumRelaySettings.AutoRebuildCommNet;
             _draftMessages = QuantumRelaySettings.ShowScreenMessages;
             _draftDebug = QuantumRelaySettings.DebugLogging;

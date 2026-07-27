@@ -78,7 +78,9 @@ namespace QuantumRelay
                     return;
                 }
 
-                GatewayRadiusMetres = SanitizeRadius(ReadDouble(node, "gatewayRadiusMetres", DefaultGatewayRadiusMetres));
+                // Gateway distance is managed internally in RC2. Older saved
+                // radius values are intentionally ignored for compatibility.
+                GatewayRadiusMetres = DefaultGatewayRadiusMetres;
                 AutoRebuildCommNet = ReadBool(node, "autoRebuildCommNet", true);
                 ShowScreenMessages = ReadBool(node, "showScreenMessages", true);
                 DebugLogging = ReadBool(node, "debugLogging", false);
@@ -91,8 +93,7 @@ namespace QuantumRelay
                     420f,
                     ReadFloat(node, "windowHeight", 700f));
 
-                Debug.Log("[QuantumRelay] Settings loaded | radius=" +
-                          GatewayRadiusMetres.ToString("0", CultureInfo.InvariantCulture) + "m");
+                Debug.Log("[QuantumRelay] Settings loaded.");
             }
             catch (Exception ex)
             {
@@ -101,13 +102,12 @@ namespace QuantumRelay
             }
         }
 
-        public static bool Apply(double radiusMetres, bool autoRebuild,
+        public static bool Apply(bool autoRebuild,
             bool showMessages, bool debugLogging, bool save)
         {
-            double oldRadius = GatewayRadiusMetres;
             bool oldAuto = AutoRebuildCommNet;
 
-            GatewayRadiusMetres = SanitizeRadius(radiusMetres);
+            GatewayRadiusMetres = DefaultGatewayRadiusMetres;
             AutoRebuildCommNet = autoRebuild;
             ShowScreenMessages = showMessages;
             DebugLogging = debugLogging;
@@ -115,8 +115,7 @@ namespace QuantumRelay
             if (save)
                 Save();
 
-            return Math.Abs(oldRadius - GatewayRadiusMetres) > 0.01 ||
-                   oldAuto != AutoRebuildCommNet;
+            return oldAuto != AutoRebuildCommNet;
         }
 
         public static void ResetDefaults(bool save)
@@ -141,7 +140,6 @@ namespace QuantumRelay
                     Directory.CreateDirectory(directory);
 
                 ConfigNode node = new ConfigNode("QUANTUM_RELAY_SETTINGS");
-                node.AddValue("gatewayRadiusMetres", GatewayRadiusMetres.ToString("0", CultureInfo.InvariantCulture));
                 node.AddValue("autoRebuildCommNet", AutoRebuildCommNet);
                 node.AddValue("showScreenMessages", ShowScreenMessages);
                 node.AddValue("debugLogging", DebugLogging);
@@ -179,23 +177,8 @@ namespace QuantumRelay
             Save();
         }
 
-        private static double SanitizeRadius(double value)
-        {
-            value = Math.Max(100000.0, Math.Min(500000.0, value));
-            return Math.Round(value / 25000.0, MidpointRounding.AwayFromZero) * 25000.0;
-        }
 
-        private static int ReadInt(ConfigNode node, string key, int fallback)
-        {
-            int value;
-            return int.TryParse(node.GetValue(key), NumberStyles.Integer, CultureInfo.InvariantCulture, out value) ? value : fallback;
-        }
 
-        private static double ReadDouble(ConfigNode node, string key, double fallback)
-        {
-            double value;
-            return double.TryParse(node.GetValue(key), NumberStyles.Float, CultureInfo.InvariantCulture, out value) ? value : fallback;
-        }
 
         private static float ReadFloat(ConfigNode node, string key, float fallback)
         {
