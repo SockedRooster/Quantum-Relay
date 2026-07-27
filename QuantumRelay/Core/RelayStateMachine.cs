@@ -50,13 +50,13 @@ namespace QuantumRelay
                 case QuantumRelayOperationalState.Disabled:
                     return "Disabled";
                 case QuantumRelayOperationalState.Retracted:
-                    return "Retracted";
+                    return "Folded";
                 case QuantumRelayOperationalState.Deploying:
                     return "Deploying";
                 case QuantumRelayOperationalState.Synchronizing:
-                    return "Synchronizing";
+                    return "Initializing";
                 case QuantumRelayOperationalState.Operational:
-                    return "Operational";
+                    return "Entangled";
                 case QuantumRelayOperationalState.InsufficientPower:
                     return "Insufficient Power";
                 case QuantumRelayOperationalState.NoCommNetHardware:

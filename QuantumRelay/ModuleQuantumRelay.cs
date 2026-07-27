@@ -15,6 +15,9 @@ namespace QuantumRelay
         private RelayPowerController powerController;
         private RelaySynchronizationController synchronizationController;
         private RelayDefinition relayDefinition;
+        private QuantumRelayEffects relayEffects;
+        private bool effectsInitialized;
+        private bool transmitterWasBusy;
 
         private QuantumRelayDeploymentState deploymentState =
             QuantumRelayDeploymentState.Unknown;
@@ -70,6 +73,35 @@ namespace QuantumRelay
 
         [KSPField]
         public double deploymentLossGracePeriod = 2.0;
+
+        // Presentation-only settings. These must never gate deployment, power,
+        // synchronization, registration, or routing.
+        [KSPField]
+        public bool enableEffects = true;
+
+        [KSPField]
+        public string activationSound = "QuantumRelay/Sounds/Activation";
+
+        [KSPField]
+        public string transmissionSound = "QuantumRelay/Sounds/TransmissionPulse";
+
+        [KSPField]
+        public float effectsVolume = 0.65f;
+
+        [KSPField]
+        public float statusLightRange = 12.0f;
+
+        [KSPField]
+        public float statusLightIntensity = 1.25f;
+
+        [KSPField]
+        public float statusLightOffsetX = 0.0f;
+
+        [KSPField]
+        public float statusLightOffsetY = 0.0f;
+
+        [KSPField]
+        public float statusLightOffsetZ = 0.0f;
 
         [KSPField]
         public string startupStage1 = "";
@@ -373,6 +405,14 @@ namespace QuantumRelay
 
             RefreshDiagnostics();
             EvaluateState(true);
+
+            // Effects are initialized after the part and its deployable modules
+            // have completed startup. Keeping this work out of OnStart and
+            // FixedUpdate preserves the stable RC2 synchronization path.
+            EnsureEffectsInitialized();
+            UpdateEffectsState();
+            CheckForTransmissionPulse();
+
             UpdateDisplayFields();
             UpdateEventVisibility();
 
@@ -504,6 +544,8 @@ namespace QuantumRelay
 
             persistedOperationalState = operationalState.ToString();
 
+            UpdateEffectsState();
+
             // Reevaluate gateway selection as soon as this relay changes state.
             // This allows stronger restored gateways to reclaim the link without
             // requiring the player to switch vessels first.
@@ -512,6 +554,144 @@ namespace QuantumRelay
                 QuantumManager.Instance.NotifyRelayStateChanged(this);
                 QuantumRelayCommands.RequestRefresh();
             }
+        }
+
+        /// <summary>
+        /// Allows routing integrations to trigger the presentation pulse without
+        /// coupling gameplay code to Unity audio/light implementation details.
+        /// </summary>
+        public void TriggerTransmissionPulse()
+        {
+            try
+            {
+                if (relayEffects != null)
+                    relayEffects.TriggerTransmissionPulse();
+            }
+            catch (Exception exception)
+            {
+                Debug.LogWarning(
+                    "[QuantumRelay] Transmission effect failed without affecting relay logic: " +
+                    exception.Message);
+            }
+        }
+
+        private void EnsureEffectsInitialized()
+        {
+            if (effectsInitialized || !HighLogic.LoadedSceneIsFlight || part == null)
+                return;
+
+            effectsInitialized = true;
+
+            try
+            {
+                // Use a dedicated child object. The Part's own GameObject remains
+                // untouched by presentation components.
+                GameObject effectsObject = new GameObject("QuantumRelayEffects");
+                effectsObject.transform.SetParent(part.transform, false);
+                relayEffects = effectsObject.AddComponent<QuantumRelayEffects>();
+
+                relayEffects.Initialize(
+                    part,
+                    enableEffects,
+                    activationSound,
+                    transmissionSound,
+                    new Vector3(
+                        statusLightOffsetX,
+                        statusLightOffsetY,
+                        statusLightOffsetZ),
+                    statusLightRange,
+                    statusLightIntensity,
+                    effectsVolume,
+                    operationalState);
+            }
+            catch (Exception exception)
+            {
+                relayEffects = null;
+                Debug.LogWarning(
+                    "[QuantumRelay] Effects initialization failed; relay gameplay remains active: " +
+                    exception.Message);
+            }
+        }
+
+        private void UpdateEffectsState()
+        {
+            try
+            {
+                if (relayEffects != null)
+                    relayEffects.SetState(operationalState);
+            }
+            catch (Exception exception)
+            {
+                Debug.LogWarning(
+                    "[QuantumRelay] Effects state update failed without affecting relay logic: " +
+                    exception.Message);
+            }
+        }
+
+        private void CheckForTransmissionPulse()
+        {
+            // This runs at the normal status refresh interval, never in
+            // FixedUpdate. Audio inspection therefore cannot interrupt or delay
+            // synchronization ticks.
+            bool busy = IsAnyTransmitterBusy();
+            if (busy && !transmitterWasBusy)
+                TriggerTransmissionPulse();
+
+            transmitterWasBusy = busy;
+        }
+
+        private bool IsAnyTransmitterBusy()
+        {
+            Vessel vessel = part != null ? part.vessel : null;
+            if (vessel == null || vessel.parts == null)
+                return false;
+
+            try
+            {
+                foreach (Part vesselPart in vessel.parts)
+                {
+                    if (vesselPart == null || vesselPart.Modules == null)
+                        continue;
+
+                    foreach (PartModule module in vesselPart.Modules)
+                    {
+                        if (module == null ||
+                            module.moduleName != QuantumRelayConstants.TransmitterModuleName)
+                        {
+                            continue;
+                        }
+
+                        Type type = module.GetType();
+                        System.Reflection.MethodInfo isBusyMethod =
+                            type.GetMethod("IsBusy", Type.EmptyTypes);
+
+                        if (isBusyMethod != null &&
+                            isBusyMethod.ReturnType == typeof(bool))
+                        {
+                            object result = isBusyMethod.Invoke(module, null);
+                            if (result is bool && (bool)result)
+                                return true;
+                        }
+
+                        System.Reflection.FieldInfo busyField =
+                            type.GetField("busy") ?? type.GetField("isBusy");
+
+                        if (busyField != null && busyField.FieldType == typeof(bool) &&
+                            (bool)busyField.GetValue(module))
+                        {
+                            return true;
+                        }
+                    }
+                }
+            }
+            catch (Exception exception)
+            {
+                Debug.LogWarning(
+                    "[QuantumRelay] Unable to inspect transmitter activity: " +
+                    exception.Message);
+            }
+
+            return false;
         }
 
         private void RefreshDiagnostics()

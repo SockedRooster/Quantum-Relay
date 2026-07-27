@@ -47,6 +47,7 @@
     <Compile Include="QuantumRelayBootstrap.cs" />
     <Compile Include="QuantumRelayCommands.cs" />
     <Compile Include="QuantumRelayConstants.cs" />
+    <Compile Include="QuantumRelayEffects.cs" />
     <Compile Include="QuantumRelayGui.cs" />
     <Compile Include="QuantumRelayInfo.cs" />
     <Compile Include="QuantumRelayMissionControl.cs" />
@@ -67,5 +68,12 @@
     <Reference Include="UnityEngine.CoreModule"><HintPath>$(KSPManaged)\UnityEngine.CoreModule.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="UnityEngine.IMGUIModule"><HintPath>$(KSPManaged)\UnityEngine.IMGUIModule.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="UnityEngine.AnimationModule"><HintPath>$(KSPManaged)\UnityEngine.AnimationModule.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.AudioModule"><HintPath>$(KSPManaged)\UnityEngine.AudioModule.dll</HintPath><Private>false</Private></Reference>
   </ItemGroup>
+  <Target Name="CopyQuantumRelaySounds" AfterTargets="Build">
+    <MakeDir Directories="..\..\GameData\QuantumRelay\Sounds" />
+    <Copy SourceFiles="Sounds\Activation.wav;Sounds\TransmissionPulse.ogg"
+          DestinationFolder="..\..\GameData\QuantumRelay\Sounds"
+          SkipUnchangedFiles="true" />
+  </Target>
 </Project>
