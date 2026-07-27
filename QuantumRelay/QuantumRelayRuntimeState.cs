@@ -35,7 +35,7 @@ namespace QuantumRelay
             _online = ActiveLinkCount > 0;
             _reason = string.IsNullOrEmpty(reason) ? (_online ? "ready" : "offline") : reason;
             try { _updatedUt = Planetarium.GetUniversalTime(); } catch { _updatedUt = 0.0; }
-            QuantumRelayRegistry.Publish(_gatewayA, _gatewayB, _online, _reason, true);
+            QuantumRelayRegistry.PublishLinks(_links, _reason, true);
             Core.QuantumManager.Instance.NotifyTopologyChanged();
         }
 

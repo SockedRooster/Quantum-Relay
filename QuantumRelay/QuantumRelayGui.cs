@@ -184,9 +184,7 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
             }
             else
             {
-                DrawGatewayTelemetry("Gateway A", QuantumRelayRegistry.GatewayA);
-                GUILayout.Space(5f);
-                DrawGatewayTelemetry("Gateway B", QuantumRelayRegistry.GatewayB);
+                DrawRegistryNetworkLinks();
             }
             GUILayout.Space(7f);
 
@@ -234,26 +232,183 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
             }
             else
             {
-                double gatewayAPower = GetDisplayedGatewayPowerRate(
-                    false,
-                    true);
-                double gatewayBPower = GetDisplayedGatewayPowerRate(
-                    false,
-                    false);
-                double totalPower = gatewayAPower + gatewayBPower;
-
-                GUILayout.Label(
-                    "Last known relay draw: " +
-                    FormatNumber(totalPower) +
-                    " EC/s total");
-                GUILayout.Label(
-                    "Gateway A: " +
-                    FormatNumber(gatewayAPower) +
-                    " EC/s | Gateway B: " +
-                    FormatNumber(gatewayBPower) +
-                    " EC/s");
+                DrawRegistryPowerSummary();
             }
             GUILayout.EndVertical();
+        }
+
+        private static void DrawRegistryNetworkLinks()
+        {
+            GUILayout.BeginVertical(GUI.skin.box);
+            GUILayout.Label("Quantum Wormhole Network");
+
+            IList<NetworkTelemetry> networks = QuantumRelayRegistry.Networks;
+            if (networks == null || networks.Count == 0)
+            {
+                GUILayout.Label("No saved network telemetry.");
+                GUILayout.EndVertical();
+                return;
+            }
+
+            for (int i = 0; i < networks.Count; i++)
+            {
+                NetworkTelemetry network = networks[i];
+                if (network == null)
+                    continue;
+
+                if (i > 0)
+                    GUILayout.Space(4f);
+
+                Color old = GUI.contentColor;
+                GUI.contentColor = network.Online
+                    ? Color.green
+                    : new Color(1f, 0.75f, 0.2f);
+
+                GUILayout.Label(
+                    (network.Online ? "[ONLINE] " : "[OFFLINE] ") +
+                    SafeName(network.DisplayName));
+                GUI.contentColor = old;
+
+                GUILayout.Label(
+                    "Route: " +
+                    GetTelemetryEndpointName(network.GatewayA) +
+                    " <-> " +
+                    GetTelemetryEndpointName(network.GatewayB));
+
+                GUILayout.Label(
+                    "Gateways: " +
+                    GetTelemetryVesselName(network.GatewayA) +
+                    " <-> " +
+                    GetTelemetryVesselName(network.GatewayB));
+
+                GUILayout.Label(
+                    "State: " +
+                    (string.IsNullOrEmpty(network.Reason)
+                        ? (network.Online ? "ready" : "offline")
+                        : network.Reason));
+
+                if (network.GatewayA != null && network.GatewayB != null)
+                {
+                    double aStrength = network.GatewayA.HasQuantumRelayModule
+                        ? network.GatewayA.RelaySignalStrength
+                        : 0.25;
+                    double bStrength = network.GatewayB.HasQuantumRelayModule
+                        ? network.GatewayB.RelaySignalStrength
+                        : 0.25;
+                    double effective = Math.Min(aStrength, bStrength);
+                    GUILayout.Label("Effective bridge strength: " + FormatPercent(effective));
+                    if (Math.Abs(aStrength - bStrength) > 0.001)
+                        GUILayout.Label("Limited by: " +
+                            (aStrength < bStrength
+                                ? GetTelemetryVesselName(network.GatewayA)
+                                : GetTelemetryVesselName(network.GatewayB)));
+                }
+
+                GUILayout.Space(3f);
+                DrawGatewayTelemetry("Gateway A", network.GatewayA);
+                GUILayout.Space(3f);
+                DrawGatewayTelemetry("Gateway B", network.GatewayB);
+            }
+
+            GUILayout.EndVertical();
+        }
+
+        private static void DrawRegistryPowerSummary()
+        {
+            IList<NetworkTelemetry> networks = QuantumRelayRegistry.Networks;
+            Dictionary<Guid, double> uniqueGatewayPower =
+                new Dictionary<Guid, double>();
+
+            if (networks != null)
+            {
+                for (int i = 0; i < networks.Count; i++)
+                {
+                    NetworkTelemetry network = networks[i];
+                    if (network == null)
+                        continue;
+
+                    AddTelemetryPower(uniqueGatewayPower, network.GatewayA);
+                    AddTelemetryPower(uniqueGatewayPower, network.GatewayB);
+                }
+            }
+
+            double totalPower = 0.0;
+            foreach (double power in uniqueGatewayPower.Values)
+                totalPower += power;
+
+            GUILayout.Label(
+                "Last known relay draw: " +
+                FormatNumber(totalPower) +
+                " EC/s across " +
+                uniqueGatewayPower.Count +
+                (uniqueGatewayPower.Count == 1 ? " gateway" : " gateways"));
+
+            if (networks == null)
+                return;
+
+            for (int i = 0; i < networks.Count; i++)
+            {
+                NetworkTelemetry network = networks[i];
+                if (network == null)
+                    continue;
+
+                double networkPower = GetTelemetryPower(network.GatewayA);
+                if (!SameTelemetryVessel(network.GatewayA, network.GatewayB))
+                    networkPower += GetTelemetryPower(network.GatewayB);
+
+                GUILayout.Label(
+                    SafeName(network.DisplayName) +
+                    ": " +
+                    FormatNumber(networkPower) +
+                    " EC/s");
+            }
+        }
+
+        private static void AddTelemetryPower(
+            IDictionary<Guid, double> powers,
+            GatewayTelemetry gateway)
+        {
+            if (powers == null || gateway == null || !gateway.IsKnown)
+                return;
+
+            Guid vesselId = gateway.VesselId;
+            if (vesselId == Guid.Empty)
+                return;
+
+            if (!powers.ContainsKey(vesselId))
+                powers.Add(vesselId, GetTelemetryPower(gateway));
+        }
+
+        private static double GetTelemetryPower(GatewayTelemetry gateway)
+        {
+            return gateway != null
+                ? Math.Max(0.0, gateway.RelayPowerRate)
+                : 0.0;
+        }
+
+        private static bool SameTelemetryVessel(
+            GatewayTelemetry a,
+            GatewayTelemetry b)
+        {
+            return a != null &&
+                   b != null &&
+                   a.VesselId != Guid.Empty &&
+                   b.VesselId != Guid.Empty &&
+                   a.VesselId == b.VesselId;
+        }
+
+        private static string GetTelemetryEndpointName(GatewayTelemetry gateway)
+        {
+            return gateway != null && gateway.IsKnown
+                ? SafeName(gateway.EndpointName)
+                : "Unassigned";
+        }
+
+        private static string GetTelemetryVesselName(GatewayTelemetry gateway)
+        {
+            return gateway != null && gateway.IsKnown
+                ? SafeName(gateway.VesselName)
+                : "No gateway";
         }
 
         private static void DrawNetworkLinks()

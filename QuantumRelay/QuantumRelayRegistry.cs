@@ -1,5 +1,7 @@
 using System;
 using System.IO;
+using System.Collections.Generic;
+using QuantumRelay.Core;
 using UnityEngine;
 
 namespace QuantumRelay
@@ -26,6 +28,7 @@ namespace QuantumRelay
         public string RelayDeploymentState = "Unknown";
         public bool RelaySynchronized;
         public double RelaySynchronizationFraction;
+        public double RelaySignalStrength;
         public double RelayPowerRate;
         public int RelayTier;
         public string RelayModel = "Unknown";
@@ -43,6 +46,19 @@ namespace QuantumRelay
         }
     }
 
+
+    internal sealed class NetworkTelemetry
+    {
+        public string Id = string.Empty;
+        public string DisplayName = "Quantum Link";
+        public string NetworkId = string.Empty;
+        public GatewayTelemetry GatewayA;
+        public GatewayTelemetry GatewayB;
+        public bool Online;
+        public string Reason = "offline";
+        public double UpdatedUt;
+    }
+
     /// <summary>
     /// Save-specific mission-control telemetry. Flight publishes live gateway
     /// state; the Space Center and Tracking Station can display the last known
@@ -58,6 +74,7 @@ namespace QuantumRelay
         private static double _updatedUt;
         private static GatewayTelemetry _gatewayA;
         private static GatewayTelemetry _gatewayB;
+        private static readonly List<NetworkTelemetry> _networks = new List<NetworkTelemetry>();
 
         public static bool Online
         {
@@ -93,6 +110,15 @@ namespace QuantumRelay
             }
         }
 
+        public static IList<NetworkTelemetry> Networks
+        {
+            get
+            {
+                EnsureLoaded();
+                return _networks.AsReadOnly();
+            }
+        }
+
         public static void Publish(
             GatewayCandidate a,
             GatewayCandidate b,
@@ -100,15 +126,65 @@ namespace QuantumRelay
             string reason,
             bool save)
         {
+            ActiveQuantumLink legacy = new ActiveQuantumLink
+            {
+                Id = "legacy",
+                DisplayName = "Primary Quantum Link",
+                NetworkId = "legacy-primary",
+                GatewayA = a,
+                GatewayB = b,
+                Online = online,
+                Reason = reason
+            };
+
+            PublishLinks(new[] { legacy }, reason, save);
+        }
+
+        public static void PublishLinks(
+            IEnumerable<ActiveQuantumLink> links,
+            string reason,
+            bool save)
+        {
             EnsureLoaded();
 
             double now = SafeUniversalTime();
+            _networks.Clear();
 
-            _gatewayA = FromCandidate(a, now) ?? _gatewayA;
-            _gatewayB = FromCandidate(b, now) ?? _gatewayB;
-            _online = online;
+            if (links != null)
+            {
+                foreach (ActiveQuantumLink link in links)
+                {
+                    if (link == null)
+                        continue;
+
+                    NetworkTelemetry telemetry = new NetworkTelemetry
+                    {
+                        Id = link.Id ?? string.Empty,
+                        DisplayName = string.IsNullOrEmpty(link.SafeDisplayName)
+                            ? "Quantum Link"
+                            : link.SafeDisplayName,
+                        NetworkId = link.NetworkId ?? string.Empty,
+                        GatewayA = FromCandidate(link.GatewayA, now),
+                        GatewayB = FromCandidate(link.GatewayB, now),
+                        Online = link.Online,
+                        Reason = string.IsNullOrEmpty(link.Reason)
+                            ? (link.Online ? "ready" : "offline")
+                            : link.Reason,
+                        UpdatedUt = now
+                    };
+
+                    _networks.Add(telemetry);
+                }
+            }
+
+            NetworkTelemetry firstOnline = _networks.Find(n => n != null && n.Online);
+            NetworkTelemetry first = firstOnline ?? _networks.Find(n => n != null);
+
+            _gatewayA = first != null ? first.GatewayA : null;
+            _gatewayB = first != null ? first.GatewayB : null;
+            _online = _networks.Exists(n => n != null && n.Online);
             _reason = string.IsNullOrEmpty(reason)
-                ? "unknown"
+                ? (_online ? "ready" : "offline")
                 : reason;
             _updatedUt = now;
 
@@ -130,6 +206,7 @@ namespace QuantumRelay
             _loaded = true;
             _gatewayA = null;
             _gatewayB = null;
+            _networks.Clear();
             _online = false;
             _reason = "No telemetry received";
             _updatedUt = 0.0;
@@ -197,6 +274,8 @@ namespace QuantumRelay
                     candidate.RelaySynchronized,
                 RelaySynchronizationFraction =
                     candidate.RelaySynchronizationFraction,
+                RelaySignalStrength =
+                    candidate.RelaySignalStrength,
                 RelayPowerRate =
                     candidate.RelayPowerRate,
                 RelayTier =
@@ -245,6 +324,34 @@ namespace QuantumRelay
 
                 _gatewayB =
                     ReadGateway(root.GetNode("GATEWAY_B"));
+
+                _networks.Clear();
+                ConfigNode[] networkNodes = root.GetNodes("NETWORK");
+                if (networkNodes != null)
+                {
+                    for (int i = 0; i < networkNodes.Length; i++)
+                    {
+                        NetworkTelemetry network = ReadNetwork(networkNodes[i]);
+                        if (network != null)
+                            _networks.Add(network);
+                    }
+                }
+
+                if (_networks.Count == 0 &&
+                    (_gatewayA != null || _gatewayB != null))
+                {
+                    _networks.Add(new NetworkTelemetry
+                    {
+                        Id = "legacy",
+                        DisplayName = "Primary Quantum Link",
+                        NetworkId = "legacy-primary",
+                        GatewayA = _gatewayA,
+                        GatewayB = _gatewayB,
+                        Online = _online,
+                        Reason = _reason,
+                        UpdatedUt = _updatedUt
+                    });
+                }
 
                 Debug.Log(
                     "[QuantumRelay] Mission Control registry loaded | " +
@@ -296,6 +403,9 @@ namespace QuantumRelay
                     "GATEWAY_B",
                     _gatewayB);
 
+                for (int i = 0; i < _networks.Count; i++)
+                    AddNetwork(root, _networks[i]);
+
                 root.Save(path);
             }
             catch (Exception exception)
@@ -304,6 +414,44 @@ namespace QuantumRelay
                     "[QuantumRelay] Unable to save Mission Control " +
                     "registry: " + exception.Message);
             }
+        }
+
+        private static void AddNetwork(
+            ConfigNode root,
+            NetworkTelemetry network)
+        {
+            if (root == null || network == null)
+                return;
+
+            ConfigNode node = root.AddNode("NETWORK");
+            node.AddValue("id", network.Id ?? string.Empty);
+            node.AddValue("displayName", network.DisplayName ?? "Quantum Link");
+            node.AddValue("networkId", network.NetworkId ?? string.Empty);
+            node.AddValue("online", network.Online);
+            node.AddValue("reason", network.Reason ?? "offline");
+            node.AddValue("updatedUt", network.UpdatedUt);
+
+            AddGateway(node, "GATEWAY_A", network.GatewayA);
+            AddGateway(node, "GATEWAY_B", network.GatewayB);
+        }
+
+        private static NetworkTelemetry ReadNetwork(
+            ConfigNode node)
+        {
+            if (node == null)
+                return null;
+
+            return new NetworkTelemetry
+            {
+                Id = node.GetValue("id") ?? string.Empty,
+                DisplayName = node.GetValue("displayName") ?? "Quantum Link",
+                NetworkId = node.GetValue("networkId") ?? string.Empty,
+                Online = ReadBool(node, "online"),
+                Reason = node.GetValue("reason") ?? "offline",
+                UpdatedUt = ReadDouble(node, "updatedUt"),
+                GatewayA = ReadGateway(node.GetNode("GATEWAY_A")),
+                GatewayB = ReadGateway(node.GetNode("GATEWAY_B"))
+            };
         }
 
         private static void AddGateway(
@@ -373,6 +521,9 @@ namespace QuantumRelay
                 "relaySynchronizationFraction",
                 gateway.RelaySynchronizationFraction);
             node.AddValue(
+                "relaySignalStrength",
+                gateway.RelaySignalStrength);
+            node.AddValue(
                 "relayPowerRate",
                 gateway.RelayPowerRate);
             node.AddValue(
@@ -441,6 +592,8 @@ namespace QuantumRelay
                     ReadBool(node, "relaySynchronized"),
                 RelaySynchronizationFraction =
                     ReadDouble(node, "relaySynchronizationFraction"),
+                RelaySignalStrength =
+                    ReadDouble(node, "relaySignalStrength"),
                 RelayPowerRate =
                     ReadDouble(node, "relayPowerRate"),
                 RelayTier =
