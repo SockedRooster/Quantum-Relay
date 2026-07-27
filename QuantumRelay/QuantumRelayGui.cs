@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using KSP.UI.Screens;
 using UnityEngine;
 
@@ -174,11 +175,12 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
 
             if (flight)
             {
+                // Each independent quantum network owns its own gateway pair.
+                // Rendering the legacy global GatewayA/GatewayB snapshot here
+                // showed only the first active network and made later networks
+                // appear to reuse its telemetry. DrawNetworkLinks now renders
+                // the correct gateway details inside each network block.
                 DrawNetworkLinks();
-                GUILayout.Space(6f);
-                DrawGatewaySummary("Gateway A", QuantumRelayRuntimeState.GatewayA);
-                GUILayout.Space(5f);
-                DrawGatewaySummary("Gateway B", QuantumRelayRuntimeState.GatewayB);
             }
             else
             {
@@ -226,24 +228,31 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
             if (flight)
                 GUILayout.Label("Active wormholes: " + QuantumRelayRuntimeState.ActiveLinkCount);
 
-            double gatewayAPower = GetDisplayedGatewayPowerRate(
-                flight,
-                true);
-            double gatewayBPower = GetDisplayedGatewayPowerRate(
-                flight,
-                false);
-            double totalPower = gatewayAPower + gatewayBPower;
+            if (flight)
+            {
+                DrawFlightPowerSummary();
+            }
+            else
+            {
+                double gatewayAPower = GetDisplayedGatewayPowerRate(
+                    false,
+                    true);
+                double gatewayBPower = GetDisplayedGatewayPowerRate(
+                    false,
+                    false);
+                double totalPower = gatewayAPower + gatewayBPower;
 
-            GUILayout.Label(
-                "Live relay draw: " +
-                FormatNumber(totalPower) +
-                " EC/s total");
-            GUILayout.Label(
-                "Gateway A: " +
-                FormatNumber(gatewayAPower) +
-                " EC/s | Gateway B: " +
-                FormatNumber(gatewayBPower) +
-                " EC/s");
+                GUILayout.Label(
+                    "Last known relay draw: " +
+                    FormatNumber(totalPower) +
+                    " EC/s total");
+                GUILayout.Label(
+                    "Gateway A: " +
+                    FormatNumber(gatewayAPower) +
+                    " EC/s | Gateway B: " +
+                    FormatNumber(gatewayBPower) +
+                    " EC/s");
+            }
             GUILayout.EndVertical();
         }
 
@@ -308,9 +317,97 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
                         GUILayout.Label("Limited by: " + (aStrength < bStrength
                             ? GetLinkVesselName(link.GatewayA) : GetLinkVesselName(link.GatewayB)));
                 }
+
+                GUILayout.Space(3f);
+                DrawGatewaySummary("Gateway A", link.GatewayA);
+                GUILayout.Space(3f);
+                DrawGatewaySummary("Gateway B", link.GatewayB);
             }
 
             GUILayout.EndVertical();
+        }
+
+        private static void DrawFlightPowerSummary()
+        {
+            IList<QuantumRelay.Core.ActiveQuantumLink> links =
+                QuantumRelayRuntimeState.Links;
+
+            Dictionary<Guid, double> uniqueGatewayPower =
+                new Dictionary<Guid, double>();
+
+            if (links != null)
+            {
+                for (int i = 0; i < links.Count; i++)
+                {
+                    QuantumRelay.Core.ActiveQuantumLink link = links[i];
+                    if (link == null)
+                        continue;
+
+                    AddGatewayPower(uniqueGatewayPower, link.GatewayA);
+                    AddGatewayPower(uniqueGatewayPower, link.GatewayB);
+                }
+            }
+
+            double totalPower = 0.0;
+            foreach (double power in uniqueGatewayPower.Values)
+                totalPower += power;
+
+            GUILayout.Label(
+                "Live relay draw: " +
+                FormatNumber(totalPower) +
+                " EC/s across " +
+                uniqueGatewayPower.Count +
+                (uniqueGatewayPower.Count == 1 ? " gateway" : " gateways"));
+
+            if (links == null)
+                return;
+
+            for (int i = 0; i < links.Count; i++)
+            {
+                QuantumRelay.Core.ActiveQuantumLink link = links[i];
+                if (link == null)
+                    continue;
+
+                double networkPower = GetGatewayPower(link.GatewayA);
+                if (!SameGatewayVessel(link.GatewayA, link.GatewayB))
+                    networkPower += GetGatewayPower(link.GatewayB);
+
+                GUILayout.Label(
+                    SafeName(link.SafeDisplayName) +
+                    ": " +
+                    FormatNumber(networkPower) +
+                    " EC/s");
+            }
+        }
+
+        private static void AddGatewayPower(
+            IDictionary<Guid, double> powers,
+            GatewayCandidate gateway)
+        {
+            if (powers == null || gateway == null || gateway.Vessel == null)
+                return;
+
+            Guid vesselId = gateway.Vessel.id;
+            if (!powers.ContainsKey(vesselId))
+                powers.Add(vesselId, GetGatewayPower(gateway));
+        }
+
+        private static double GetGatewayPower(GatewayCandidate gateway)
+        {
+            return gateway != null
+                ? Math.Max(0.0, gateway.RelayPowerRate)
+                : 0.0;
+        }
+
+        private static bool SameGatewayVessel(
+            GatewayCandidate a,
+            GatewayCandidate b)
+        {
+            return a != null &&
+                   b != null &&
+                   a.Vessel != null &&
+                   b.Vessel != null &&
+                   a.Vessel.id == b.Vessel.id;
         }
 
         private static string GetLinkEndpointName(GatewayCandidate gateway)
