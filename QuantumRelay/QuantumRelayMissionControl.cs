@@ -26,10 +26,11 @@ namespace QuantumRelay
                 HighLogic.LoadedScene);
 
             QuantumRelaySettings.Load();
-            QuantumRelayRegistry.Reload();
+            QuantumRelayRegistry.EnsureLoaded();
 
             // Do not scan proto-vessels or call QuantumRelayRuntimeState.Publish().
-            // The GUI reads QuantumRelayRegistry directly outside Flight.
+            // Preserve the in-memory Flight snapshot during scene changes.
+            // Scenario OnLoad restores it after a full save-game reload.
             enabled = false;
         }
 

@@ -205,14 +205,55 @@ namespace QuantumRelay
 
         public static void Reload()
         {
+            ResetState();
             _loaded = true;
+            Load();
+        }
+
+        /// <summary>
+        /// Restores telemetry stored inside the save's ScenarioModule node.
+        /// This is the authoritative persistence path. The external CFG file
+        /// remains as a compatibility fallback for older builds.
+        /// </summary>
+        internal static void LoadFromScenario(ConfigNode scenarioNode)
+        {
+            if (scenarioNode == null)
+                return;
+
+            ConfigNode root = scenarioNode.GetNode(RootNodeName);
+            if (root == null)
+                return;
+
+            ResetState();
+            _loaded = true;
+            ApplyRoot(root, "scenario save");
+        }
+
+        /// <summary>
+        /// Writes the current telemetry into the save's ScenarioModule node.
+        /// </summary>
+        internal static void SaveToScenario(ConfigNode scenarioNode)
+        {
+            if (scenarioNode == null)
+                return;
+
+            EnsureLoaded();
+            scenarioNode.RemoveNodes(RootNodeName);
+            scenarioNode.AddNode(BuildRoot());
+
+            Debug.Log(
+                "[QuantumRelay] Registry written to scenario save | " +
+                "networks=" + _networks.Count);
+        }
+
+        private static void ResetState()
+        {
             _gatewayA = null;
             _gatewayB = null;
             _networks.Clear();
             _online = false;
             _reason = "No telemetry received";
             _updatedUt = 0.0;
-            Load();
         }
 
         public static string AgeText()
@@ -310,57 +351,7 @@ namespace QuantumRelay
                     return;
                 }
 
-                bool.TryParse(
-                    root.GetValue("online"),
-                    out _online);
-
-                double.TryParse(
-                    root.GetValue("updatedUt"),
-                    out _updatedUt);
-
-                _reason =
-                    root.GetValue("reason") ?? _reason;
-
-                _gatewayA =
-                    ReadGateway(root.GetNode("GATEWAY_A"));
-
-                _gatewayB =
-                    ReadGateway(root.GetNode("GATEWAY_B"));
-
-                _networks.Clear();
-                ConfigNode[] networkNodes = root.GetNodes("NETWORK");
-                if (networkNodes != null)
-                {
-                    for (int i = 0; i < networkNodes.Length; i++)
-                    {
-                        NetworkTelemetry network = ReadNetwork(networkNodes[i]);
-                        if (network != null)
-                            _networks.Add(network);
-                    }
-                }
-
-                if (_networks.Count == 0 &&
-                    (_gatewayA != null || _gatewayB != null))
-                {
-                    _networks.Add(new NetworkTelemetry
-                    {
-                        Id = "legacy",
-                        DisplayName = "Primary Quantum Link",
-                        NetworkId = "legacy-primary",
-                        GatewayA = _gatewayA,
-                        GatewayB = _gatewayB,
-                        Online = _online,
-                        Reason = _reason,
-                        UpdatedUt = _updatedUt
-                    });
-                }
-
-                Debug.Log(
-                    "[QuantumRelay] Mission Control registry loaded | " +
-                    "online=" + _online +
-                    " | networks=" + _networks.Count +
-                    " | path=" + path);
-                LogNetworkSnapshot("load", _networks, _reason, _updatedUt);
+                ApplyRoot(root, path);
             }
             catch (Exception exception)
             {
@@ -385,31 +376,7 @@ namespace QuantumRelay
                 if (!Directory.Exists(directory))
                     Directory.CreateDirectory(directory);
 
-                ConfigNode root =
-                    new ConfigNode(RootNodeName);
-
-                root.AddValue(
-                    "version",
-                    QuantumRelayConstants.Version);
-                root.AddValue("online", _online);
-                root.AddValue(
-                    "reason",
-                    _reason ?? "unknown");
-                root.AddValue("updatedUt", _updatedUt);
-
-                AddGateway(
-                    root,
-                    "GATEWAY_A",
-                    _gatewayA);
-
-                AddGateway(
-                    root,
-                    "GATEWAY_B",
-                    _gatewayB);
-
-                for (int i = 0; i < _networks.Count; i++)
-                    AddNetwork(root, _networks[i]);
-
+                ConfigNode root = BuildRoot();
                 root.Save(path);
 
                 Debug.Log(
@@ -424,6 +391,72 @@ namespace QuantumRelay
                     "[QuantumRelay] Unable to save Mission Control " +
                     "registry: " + exception.Message);
             }
+        }
+
+        private static ConfigNode BuildRoot()
+        {
+            ConfigNode root = new ConfigNode(RootNodeName);
+
+            root.AddValue("version", QuantumRelayConstants.Version);
+            root.AddValue("online", _online);
+            root.AddValue("reason", _reason ?? "unknown");
+            root.AddValue("updatedUt", _updatedUt);
+
+            AddGateway(root, "GATEWAY_A", _gatewayA);
+            AddGateway(root, "GATEWAY_B", _gatewayB);
+
+            for (int i = 0; i < _networks.Count; i++)
+                AddNetwork(root, _networks[i]);
+
+            return root;
+        }
+
+        private static void ApplyRoot(ConfigNode root, string source)
+        {
+            if (root == null)
+                return;
+
+            bool.TryParse(root.GetValue("online"), out _online);
+            double.TryParse(root.GetValue("updatedUt"), out _updatedUt);
+            _reason = root.GetValue("reason") ?? _reason;
+
+            _gatewayA = ReadGateway(root.GetNode("GATEWAY_A"));
+            _gatewayB = ReadGateway(root.GetNode("GATEWAY_B"));
+
+            _networks.Clear();
+            ConfigNode[] networkNodes = root.GetNodes("NETWORK");
+            if (networkNodes != null)
+            {
+                for (int i = 0; i < networkNodes.Length; i++)
+                {
+                    NetworkTelemetry network = ReadNetwork(networkNodes[i]);
+                    if (network != null)
+                        _networks.Add(network);
+                }
+            }
+
+            if (_networks.Count == 0 &&
+                (_gatewayA != null || _gatewayB != null))
+            {
+                _networks.Add(new NetworkTelemetry
+                {
+                    Id = "legacy",
+                    DisplayName = "Primary Quantum Link",
+                    NetworkId = "legacy-primary",
+                    GatewayA = _gatewayA,
+                    GatewayB = _gatewayB,
+                    Online = _online,
+                    Reason = _reason,
+                    UpdatedUt = _updatedUt
+                });
+            }
+
+            Debug.Log(
+                "[QuantumRelay] Mission Control registry loaded | " +
+                "online=" + _online +
+                " | networks=" + _networks.Count +
+                " | source=" + source);
+            LogNetworkSnapshot("load", _networks, _reason, _updatedUt);
         }
 
         private static void LogNetworkSnapshot(

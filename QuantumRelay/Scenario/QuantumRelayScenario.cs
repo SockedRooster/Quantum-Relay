@@ -33,11 +33,16 @@ namespace QuantumRelay
         public override void OnLoad(ConfigNode node)
         {
             base.OnLoad(node);
+
+            // Restore the last published network snapshot before any
+            // non-flight GUI attempts to display it.
+            QuantumRelayRegistry.LoadFromScenario(node);
             QuantumManager.Instance.Initialize("QuantumRelayScenario.OnLoad");
 
             Debug.Log(
                 "[QuantumRelay] Scenario state loaded" +
-                " | scene=" + HighLogic.LoadedScene);
+                " | scene=" + HighLogic.LoadedScene +
+                " | networks=" + QuantumRelayRegistry.Networks.Count);
         }
 
         public override void OnSave(ConfigNode node)
@@ -54,6 +59,8 @@ namespace QuantumRelay
                     "registeredRelayCount",
                     QuantumManager.Instance.RegisteredRelayCount.ToString(),
                     true);
+
+                QuantumRelayRegistry.SaveToScenario(node);
             }
         }
 
