@@ -15,7 +15,7 @@ namespace QuantumRelay
         private RelayPowerController powerController;
         private RelaySynchronizationController synchronizationController;
         private RelayDefinition relayDefinition;
-        private QuantumRelayEffects relayEffects;
+        private QuantumRelayVisualController visualController;
         private bool effectsInitialized;
         private bool transmitterWasBusy;
 
@@ -102,6 +102,42 @@ namespace QuantumRelay
 
         [KSPField]
         public float statusLightOffsetZ = 0.0f;
+
+        // RC4 energy-ring tuning. Offsets are in the part model's local space.
+        [KSPField]
+        public float energyRingRadius = 1.25f;
+
+        [KSPField]
+        public float energyRingWidth = 0.055f;
+
+        [KSPField]
+        public int energyRingSegments = 24;
+
+        [KSPField]
+        public float energyRingTiltX = 0.0f;
+
+        [KSPField]
+        public float energyRingTiltY = 0.0f;
+
+        [KSPField]
+        public float energyRingTiltZ = 0.0f;
+
+        // RC4 per-panel emission. The visual system automatically finds the
+        // repeated flat reflector-panel renderers on the deployed part.
+        [KSPField]
+        public bool enablePerHexEmission = true;
+
+        [KSPField]
+        public float perHexGlowRadius = 0.18f;
+
+        [KSPField]
+        public float perHexGlowWidth = 0.025f;
+
+        [KSPField]
+        public int perHexMaximumEmitters = 48;
+
+        [KSPField]
+        public bool perHexConvergenceLines = true;
 
         [KSPField]
         public string startupStage1 = "";
@@ -438,6 +474,9 @@ namespace QuantumRelay
 
             RefreshDiagnostics();
             EvaluateState(true);
+            EnsureEffectsInitialized();
+            UpdateEffectsState();
+            CheckForTransmissionPulse();
             UpdateDisplayFields();
             UpdateEventVisibility();
         }
@@ -564,8 +603,8 @@ namespace QuantumRelay
         {
             try
             {
-                if (relayEffects != null)
-                    relayEffects.TriggerTransmissionPulse();
+                if (visualController != null)
+                    visualController.TriggerTransmissionPulse();
             }
             catch (Exception exception)
             {
@@ -586,11 +625,11 @@ namespace QuantumRelay
             {
                 // Use a dedicated child object. The Part's own GameObject remains
                 // untouched by presentation components.
-                GameObject effectsObject = new GameObject("QuantumRelayEffects");
+                GameObject effectsObject = new GameObject("QuantumRelayVisualController");
                 effectsObject.transform.SetParent(part.transform, false);
-                relayEffects = effectsObject.AddComponent<QuantumRelayEffects>();
+                visualController = effectsObject.AddComponent<QuantumRelayVisualController>();
 
-                relayEffects.Initialize(
+                visualController.Initialize(
                     part,
                     enableEffects,
                     activationSound,
@@ -602,11 +641,23 @@ namespace QuantumRelay
                     statusLightRange,
                     statusLightIntensity,
                     effectsVolume,
-                    operationalState);
+                    energyRingRadius,
+                    energyRingWidth,
+                    energyRingSegments,
+                    energyRingTiltX,
+                    energyRingTiltY,
+                    energyRingTiltZ,
+                    enablePerHexEmission,
+                    perHexGlowRadius,
+                    perHexGlowWidth,
+                    perHexMaximumEmitters,
+                    perHexConvergenceLines,
+                    operationalState,
+                    SynchronizationFraction);
             }
             catch (Exception exception)
             {
-                relayEffects = null;
+                visualController = null;
                 Debug.LogWarning(
                     "[QuantumRelay] Effects initialization failed; relay gameplay remains active: " +
                     exception.Message);
@@ -617,8 +668,10 @@ namespace QuantumRelay
         {
             try
             {
-                if (relayEffects != null)
-                    relayEffects.SetState(operationalState);
+                if (visualController != null)
+                    visualController.SetOperationalState(
+                        operationalState,
+                        SynchronizationFraction);
             }
             catch (Exception exception)
             {
@@ -792,7 +845,15 @@ namespace QuantumRelay
                 "{0:N2} EC/s",
                 CurrentPowerRate);
 
-            if (IsSynchronized)
+            if (!relayEnabled &&
+                (deploymentState == QuantumRelayDeploymentState.Extended ||
+                 deploymentState == QuantumRelayDeploymentState.Fixed))
+            {
+                relayStatus = "Relay Disabled";
+                synchronizationStatus =
+                    "Enable Quantum Relay to begin synchronization";
+            }
+            else if (IsSynchronized)
             {
                 synchronizationStatus = GetStartupCompleteText();
             }

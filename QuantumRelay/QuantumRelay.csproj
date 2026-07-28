@@ -12,9 +12,9 @@
     <Description>Stable multi-tier quantum relay routing through Promised Worlds wormholes.</Description>
     <Copyright>Copyright © 2026 RoosterWorks</Copyright>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <Version>1.6.0</Version>
-    <AssemblyVersion>1.6.0.0</AssemblyVersion>
-    <FileVersion>1.6.0.0</FileVersion>
+    <Version>1.7.0</Version>
+    <AssemblyVersion>1.7.0.0</AssemblyVersion>
+    <FileVersion>1.7.0.0</FileVersion>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <KSPRoot Condition=" '$(KSPRoot)' == '' ">A:\SteamLibrary\steamapps\common\Kerbal Space Program</KSPRoot>
@@ -48,6 +48,8 @@
     <Compile Include="QuantumRelayCommands.cs" />
     <Compile Include="QuantumRelayConstants.cs" />
     <Compile Include="QuantumRelayEffects.cs" />
+    <Compile Include="QuantumRelayVisualController.cs" />
+    <Compile Include="RelayVisualState.cs" />
     <Compile Include="QuantumRelayGui.cs" />
     <Compile Include="QuantumRelayInfo.cs" />
     <Compile Include="QuantumRelayMissionControl.cs" />
