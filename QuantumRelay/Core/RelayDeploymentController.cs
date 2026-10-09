@@ -28,6 +28,13 @@ namespace QuantumRelay
             if (deployment == null)
                 return QuantumRelayDeploymentState.Missing;
 
+            // Rooster Works dishes use stock ModuleAnimateGeneric rather than
+            // Near Future's ModuleDeployableReflector. Read its persisted
+            // normalized animation progress without depending on a particular
+            // KSP build exposing animTime as a public C# member.
+            if (deployment is ModuleAnimateGeneric)
+                return ReadGenericAnimationState(deployment);
+
             ModuleDeployablePart deployable =
                 deployment as ModuleDeployablePart;
 
@@ -88,6 +95,29 @@ namespace QuantumRelay
             if (deployment == null || deployment.Events == null)
                 return false;
 
+            if (deployment is ModuleAnimateGeneric)
+            {
+                QuantumRelayDeploymentState current = ReadGenericAnimationState(deployment);
+                if ((extend && current == QuantumRelayDeploymentState.Extended) ||
+                    (!extend && current == QuantumRelayDeploymentState.Retracted))
+                    return true;
+
+                // Toggle is the stock ModuleAnimateGeneric event; unlike the
+                // old reflector, there are no separate Extend/Retract events.
+                BaseEvent toggle = deployment.Events["Toggle"];
+                if (toggle == null)
+                {
+                    Debug.LogWarning("[QuantumRelay] ModuleAnimateGeneric Toggle event missing.");
+                    return false;
+                }
+                try { toggle.Invoke(); return true; }
+                catch (Exception ex)
+                {
+                    Debug.LogWarning("[QuantumRelay] Animation toggle failed: " + ex.Message);
+                    return false;
+                }
+            }
+
             string[] eventNames = extend
                 ? new[]
                 {
@@ -133,6 +163,53 @@ namespace QuantumRelay
                 ".");
 
             return false;
+        }
+
+        private static QuantumRelayDeploymentState ReadGenericAnimationState(PartModule module)
+        {
+            try
+            {
+                // KSP persists ModuleAnimateGeneric progress as animTime.
+                // BaseField is preferred; reflection handles builds where it
+                // is not exposed as a KSPField.
+                object value = null;
+                if (module.Fields != null)
+                {
+                    BaseField field = module.Fields["animTime"];
+                    if (field != null) value = field.GetValue(module);
+                }
+                if (value == null)
+                {
+                    const System.Reflection.BindingFlags flags =
+                        System.Reflection.BindingFlags.Instance |
+                        System.Reflection.BindingFlags.Public |
+                        System.Reflection.BindingFlags.NonPublic;
+                    var type = module.GetType();
+                    var field = type.GetField("animTime", flags);
+                    if (field != null) value = field.GetValue(module);
+                    else
+                    {
+                        var property = type.GetProperty("animTime", flags);
+                        if (property != null) value = property.GetValue(module, null);
+                    }
+                }
+                if (value == null)
+                {
+                    Debug.LogWarning("[QuantumRelay] Unable to read ModuleAnimateGeneric animTime.");
+                    return QuantumRelayDeploymentState.Unknown;
+                }
+                float t = Convert.ToSingle(value, System.Globalization.CultureInfo.InvariantCulture);
+                if (t >= 0.995f) return QuantumRelayDeploymentState.Extended;
+                if (t <= 0.005f) return QuantumRelayDeploymentState.Retracted;
+                // The module's progress alone cannot distinguish forward from
+                // reverse playback reliably; both are non-operational states.
+                return QuantumRelayDeploymentState.Extending;
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning("[QuantumRelay] Deployment state read failed: " + ex.Message);
+                return QuantumRelayDeploymentState.Unknown;
+            }
         }
 
         private PartModule FindModule()
