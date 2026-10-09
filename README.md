@@ -29,8 +29,6 @@ The v1.7.3 RC1 release provides:
 - **ModuleManager**
 - **Stock CommNet enabled**
 
-**Near Future Exploration is not required** for the four standalone RoosterWorks relay models included in this release.
-
 ## Installation
 
 1. Back up your KSP saves and any existing Quantum Relay installation.
