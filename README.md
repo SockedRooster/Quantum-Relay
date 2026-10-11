@@ -16,6 +16,10 @@ Copy `GameData/QuantumRelay` to your KSP `GameData` folder after backing up your
 
 The VAB relay buttons are nonfunctional; a fix is planned for v1.03.
 
+## Development roadmap
+
+See [ROADMAP.md](ROADMAP.md) for planned work, including the **v1.5 QSA-100 Quantum Survey Array**: one wormhole survey part with optional Kerbalism science integration, stock-science fallback, and persistent discoveries.
+
 ## Project
 
 https://github.com/SockedRooster/Quantum-Relay
