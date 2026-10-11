@@ -2,14 +2,14 @@
 
 This document tracks **planned** features, not functionality in released builds. Milestones are targets; scope and versions may be adjusted after testing.
 
-## Near term — Stabilization before v1.5
+## Near term — Stabilization before v1.15
 
 - Restore all relay interactions in the VAB and verify functional buttons.
 - Restore persistence for the user's resized Quantum Relay menu across scene changes and save reloads.
 - Regression-test simultaneous quantum links, established wormhole networks, save/load behavior and CommNet integration before adding new science modules.
 - Validate recent UI and network diagnostics against existing saved games.
 
-## v1.5 — QSA-100 Quantum Survey Array (planned)
+## v1.15 — QSA-100 Quantum Survey Array (planned)
 
 **Single new physical part:** **QSA-100 Quantum Survey Array**, a compact probe/station-mounted science instrument integrated directly into the existing **Quantum Relay** plugin and repository. No separate Surveyor addon or extra dependency is required.
 
@@ -35,7 +35,7 @@ This document tracks **planned** features, not functionality in released builds.
 - Design for unloaded/loaded vessel and save/load transitions: do not award science or duplicate surveys because of scene changes.
 - Keep compatibility with configured wormhole body endpoints, including multiple star systems and modded planetary packs, without hardcoded names.
 
-### Proposed v1.5 acceptance tests
+### Proposed v1.15 acceptance tests
 
 - A craft with **one QSA-100** completes initial and deep surveys at a supported wormhole.
 - Surveys persist after scene changes, quicksave/reload and returning to the tracking station.
@@ -45,11 +45,11 @@ This document tracks **planned** features, not functionality in released builds.
 - Existing QR links and relay networks still work with no QSA-100 parts installed.
 - No VAB relay-control regressions; the QR window continues remembering its configured size.
 
-### Out of scope for v1.5
+### Out of scope for v1.15
 
 - Multiple surveyor part sizes or dedicated observatory variants.
 - Mandatory survey permissions to travel through a wormhole or establish quantum communications.
 - Standalone `RoosterWorks-Deep-Space-Surveyor` plugin/release.
 - Unverified physics claims or gameplay values presented as real telemetry.
 
-**Implementation status: Planned / not yet coded.** No v1.5 binary, part model or science configuration is included by adding this roadmap.
+**Implementation status: Planned / not yet coded.** No v1.15 binary, part model or science configuration is included by adding this roadmap.
