@@ -164,11 +164,16 @@ namespace QuantumRelay
             switch (_state)
             {
                 case RelayVisualState.Standby:
-                    color = Amber;
-                    intensity = _lightIntensity * (0.06f + 0.18f * SharpPulse(elapsed, 2.0f));
+                    intensity = 0.0f;
+                    break;
+
+                case RelayVisualState.Searching:
+                    color = Red;
+                    intensity = _lightIntensity * (0.25f + 0.45f * SmoothPulse(elapsed, 1.0f));
                     break;
 
                 case RelayVisualState.Initializing:
+                    color = Amber;
                     intensity = _lightIntensity * (0.25f + 0.45f * SmoothPulse(elapsed, 1.0f));
                     break;
 
@@ -186,7 +191,8 @@ namespace QuantumRelay
                     break;
             }
 
-            if (transmitting)
+            if (transmitting && _state != RelayVisualState.Folded &&
+                _state != RelayVisualState.Standby)
                 intensity = Mathf.Max(intensity, _lightIntensity * 1.8f);
 
             _statusLight.color = color;

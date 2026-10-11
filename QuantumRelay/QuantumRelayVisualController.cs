@@ -73,13 +73,22 @@ namespace QuantumRelay
 
         public void SetOperationalState(
             QuantumRelayOperationalState operationalState,
-            double synchronizationFraction)
+            double synchronizationFraction,
+            bool enabled, bool deployed, bool powerSuspended, bool partnerLinked, bool synchronized)
         {
             if (!_initialized || _renderer == null)
                 return;
 
             _syncFraction = Mathf.Clamp01((float)synchronizationFraction);
-            RelayVisualState next = MapState(operationalState);
+            RelayVisualState next;
+            if (!enabled || !deployed || powerSuspended)
+                next = RelayVisualState.Folded;
+            else if (partnerLinked)
+                next = RelayVisualState.Entangled;
+            else if (!synchronized)
+                next = RelayVisualState.Initializing;
+            else
+                next = RelayVisualState.Searching;
             bool changed = next != _state;
             _state = next;
             _renderer.SetVisualState(_state, _syncFraction, changed);

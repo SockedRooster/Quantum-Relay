@@ -8,6 +8,8 @@ namespace QuantumRelay
         private readonly Part part;
         private readonly bool requiresDeployment;
         private readonly string deploymentModuleName;
+        private bool? commandedExtended;
+        private float? previousAnimationTime;
 
         public RelayDeploymentController(
             Part part,
@@ -33,7 +35,36 @@ namespace QuantumRelay
             // normalized animation progress without depending on a particular
             // KSP build exposing animTime as a public C# member.
             if (deployment is ModuleAnimateGeneric)
-                return ReadGenericAnimationState(deployment);
+            {
+                HideStockAnimationControls(deployment);
+                float progress;
+                if (!TryReadAnimationTime(deployment, out progress))
+                    return QuantumRelayDeploymentState.Unknown;
+                if (progress >= 0.995f)
+                {
+                    previousAnimationTime = progress;
+                    commandedExtended = true;
+                    return QuantumRelayDeploymentState.Extended;
+                }
+                if (progress <= 0.005f)
+                {
+                    previousAnimationTime = progress;
+                    commandedExtended = false;
+                    return QuantumRelayDeploymentState.Retracted;
+                }
+                // Actual motion wins over the last button command, including
+                // stock action-group toggles and animation reversal.
+                if (previousAnimationTime.HasValue)
+                {
+                    float delta = progress - previousAnimationTime.Value;
+                    if (delta > 0.0001f) commandedExtended = true;
+                    else if (delta < -0.0001f) commandedExtended = false;
+                }
+                previousAnimationTime = progress;
+                return commandedExtended == false
+                    ? QuantumRelayDeploymentState.Retracting
+                    : QuantumRelayDeploymentState.Extending;
+            }
 
             ModuleDeployablePart deployable =
                 deployment as ModuleDeployablePart;
@@ -97,7 +128,7 @@ namespace QuantumRelay
 
             if (deployment is ModuleAnimateGeneric)
             {
-                QuantumRelayDeploymentState current = ReadGenericAnimationState(deployment);
+                QuantumRelayDeploymentState current = GetState();
                 if ((extend && current == QuantumRelayDeploymentState.Extended) ||
                     (!extend && current == QuantumRelayDeploymentState.Retracted))
                     return true;
@@ -110,7 +141,12 @@ namespace QuantumRelay
                     Debug.LogWarning("[QuantumRelay] ModuleAnimateGeneric Toggle event missing.");
                     return false;
                 }
-                try { toggle.Invoke(); return true; }
+                try
+                {
+                    toggle.Invoke();
+                    commandedExtended = extend;
+                    return true;
+                }
                 catch (Exception ex)
                 {
                     Debug.LogWarning("[QuantumRelay] Animation toggle failed: " + ex.Message);
@@ -165,13 +201,28 @@ namespace QuantumRelay
             return false;
         }
 
-        private static QuantumRelayDeploymentState ReadGenericAnimationState(PartModule module)
+        private static void HideStockAnimationControls(PartModule module)
         {
+            if (module == null || module.Events == null) return;
+            // Keep Toggle callable programmatically; only hide the duplicate PAW button.
+            // ModuleAnimateGeneric normally exposes Toggle, but some part setups
+            // also expose Deploy/Retract event names. Hide all stock PAW events.
+            // Do not disable the events: our custom controls still invoke Toggle.
+            string[] stockEvents = { "Toggle", "Deploy", "Retract", "Extend" };
+            foreach (string eventName in stockEvents)
+            {
+                BaseEvent stockEvent = module.Events[eventName];
+                if (stockEvent == null) continue;
+                stockEvent.guiActive = false;
+                stockEvent.guiActiveEditor = false;
+            }
+        }
+
+        private static bool TryReadAnimationTime(PartModule module, out float progress)
+        {
+            progress = 0f;
             try
             {
-                // KSP persists ModuleAnimateGeneric progress as animTime.
-                // BaseField is preferred; reflection handles builds where it
-                // is not exposed as a KSPField.
                 object value = null;
                 if (module.Fields != null)
                 {
@@ -193,22 +244,15 @@ namespace QuantumRelay
                         if (property != null) value = property.GetValue(module, null);
                     }
                 }
-                if (value == null)
-                {
-                    Debug.LogWarning("[QuantumRelay] Unable to read ModuleAnimateGeneric animTime.");
-                    return QuantumRelayDeploymentState.Unknown;
-                }
-                float t = Convert.ToSingle(value, System.Globalization.CultureInfo.InvariantCulture);
-                if (t >= 0.995f) return QuantumRelayDeploymentState.Extended;
-                if (t <= 0.005f) return QuantumRelayDeploymentState.Retracted;
-                // The module's progress alone cannot distinguish forward from
-                // reverse playback reliably; both are non-operational states.
-                return QuantumRelayDeploymentState.Extending;
+                if (value == null) return false;
+                progress = Convert.ToSingle(value,
+                    System.Globalization.CultureInfo.InvariantCulture);
+                return true;
             }
             catch (Exception ex)
             {
-                Debug.LogWarning("[QuantumRelay] Deployment state read failed: " + ex.Message);
-                return QuantumRelayDeploymentState.Unknown;
+                Debug.LogWarning("[QuantumRelay] Animation progress read failed: " + ex.Message);
+                return false;
             }
         }
 

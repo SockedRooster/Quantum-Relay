@@ -63,6 +63,15 @@ namespace QuantumRelay
             if (!changed) return;
 
             Debug.Log("[QuantumRelay] Quantum graph updated | activeLinks=" + _pairs.Count);
+            for (int i = 0; i < _pairs.Count; i++)
+            {
+                GatewayPair pair = _pairs[i];
+                Debug.Log("[QuantumRelay][EdgeDiag] REGISTER | link=" + pair.Id +
+                          " | vesselA=" + pair.VesselA + " | vesselB=" + pair.VesselB +
+                          " | nodeA=" + System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(pair.NodeA) +
+                          " | nodeB=" + System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(pair.NodeB) +
+                          " | quality=" + (pair.SignalQuality * 100.0).ToString("F1") + "%");
+            }
             QueueRebuild();
         }
 
@@ -91,6 +100,24 @@ namespace QuantumRelay
                     return true;
             }
             return false;
+        }
+
+        public static string DescribeGatewayPair(CommNode a, CommNode b)
+        {
+            for (int i = 0; i < _pairs.Count; i++)
+            {
+                GatewayPair pair = _pairs[i];
+                if ((ReferenceEquals(a, pair.NodeA) && ReferenceEquals(b, pair.NodeB)) ||
+                    (ReferenceEquals(a, pair.NodeB) && ReferenceEquals(b, pair.NodeA)))
+                {
+                    return "link=" + pair.Id + " | vesselA=" + pair.VesselA +
+                           " | vesselB=" + pair.VesselB +
+                           " | nodeA=" + System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(pair.NodeA) +
+                           " | nodeB=" + System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(pair.NodeB);
+                }
+            }
+            return "link=UNKNOWN | nodeA=" + System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(a) +
+                   " | nodeB=" + System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(b);
         }
 
         public static double GetPairSignalQuality(CommNode a, CommNode b)

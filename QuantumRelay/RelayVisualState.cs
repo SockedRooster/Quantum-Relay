@@ -7,6 +7,7 @@ namespace QuantumRelay
     {
         Folded,
         Standby,
+        Searching,
         Initializing,
         Entangled,
         Transmitting,

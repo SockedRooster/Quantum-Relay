@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using QuantumRelay.Core;
 using UnityEngine;
 
@@ -17,7 +17,11 @@ namespace QuantumRelay
         private RelayDefinition relayDefinition;
         private QuantumRelayVisualController visualController;
         private bool effectsInitialized;
+        private const double StatusLightPowerRate = 0.5;
+        private bool statusLightPowered;
         private bool transmitterWasBusy;
+        private double lastBatteryFraction = 1.0;
+        private bool? lastDeploymentExtended;
 
         private QuantumRelayDeploymentState deploymentState =
             QuantumRelayDeploymentState.Unknown;
@@ -32,6 +36,58 @@ namespace QuantumRelay
         // Existing persistent field retained for save/config compatibility.
         [KSPField(isPersistant = true)]
         public bool relayEnabled = true;
+
+        [KSPField(
+            guiActive = true,
+            guiActiveEditor = true,
+            guiName = "Relay Model")]
+        public string relayModelStatus = "Quantum Relay";
+
+        [KSPField(
+            guiActive = true,
+            guiActiveEditor = true,
+            guiName = "Quantum Relay")]
+        public string relayStatus = "Standby";
+
+        [KSPField(guiActive = true, guiName = "Operational")]
+        public string operationalStatus = "NO";
+
+        [KSPField(guiActive = true, guiName = "CommNet")]
+        public string commNetStatus = "Not Detected";
+
+        [KSPField(guiActive = true, guiName = "Battery Protection")]
+        public string batteryProtectionStatus = "Ready";
+
+        [KSPField(isPersistant = true, guiActive = true, guiName = "Automatic Power Protection")]
+        [UI_Toggle(enabledText = "ON", disabledText = "OFF")]
+        public bool automaticPowerProtection = true;
+
+        [KSPField(guiActive = true, guiName = "Deployment")]
+        public string deploymentStatus = "Unknown";
+
+        [KSPField(guiActive = true, guiName = "Synchronization")]
+        public string synchronizationStatus = "Not Synchronized";
+
+        [KSPField(guiActive = true, guiName = "Power Usage")]
+        public string powerUsageStatus = "0.00 EC/s";
+
+        [KSPField(guiActive = true, guiName = "Status")]
+        public string connectionStatus = "Standby";
+
+        [KSPField(guiActive = false, guiName = "Electric Charge")]
+        public string powerStatus = "Unavailable";
+
+
+
+        [KSPField(isPersistant = true)]
+        public bool batteryProtectionLatched;
+
+        [KSPField]
+        public double batteryShutdownFraction = 0.05;
+
+        [KSPField]
+        public double batteryRestartFraction = 0.25;
+
 
         [KSPField(isPersistant = true)]
         public double synchronizationProgress;
@@ -163,35 +219,14 @@ namespace QuantumRelay
         [KSPField]
         public bool resetSynchronizationWhenDisabled = true;
 
-        [KSPField(
-            guiActive = true,
-            guiActiveEditor = true,
-            guiName = "Quantum Relay")]
-        public string relayStatus = "Standby";
 
-        [KSPField(
-            guiActive = true,
-            guiActiveEditor = true,
-            guiName = "Relay Model")]
-        public string relayModelStatus = "Quantum Relay";
 
-        [KSPField(guiActive = true, guiName = "Deployment")]
-        public string deploymentStatus = "Unknown";
 
-        [KSPField(guiActive = true, guiName = "Synchronization")]
-        public string synchronizationStatus = "Not Synchronized";
 
-        [KSPField(guiActive = true, guiName = "Power Usage")]
-        public string powerUsageStatus = "0.00 EC/s";
 
-        [KSPField(guiActive = true, guiName = "Operational")]
-        public string operationalStatus = "NO";
 
-        [KSPField(guiActive = true, guiName = "Electric Charge")]
-        public string powerStatus = "Unavailable";
 
-        [KSPField(guiActive = true, guiName = "CommNet")]
-        public string commNetStatus = "Not Detected";
+
 
         public QuantumRelayDeploymentState DeploymentState
         {
@@ -283,6 +318,41 @@ namespace QuantumRelay
             get { return operationalState.ToString(); }
         }
 
+        // Explicit editor events: stock ModuleResourceConverter controls may be
+        // hidden by converter/Kerbalism UI refresh after module startup.
+        // These operate only in the editor; flight power is state-controlled.
+        [KSPEvent(guiActive = false, guiActiveEditor = true,
+            guiName = "Start Standby Power", active = true)]
+        public void PreviewStandbyPower()
+        {
+            if (HighLogic.LoadedSceneIsEditor && powerController != null)
+                powerController.SetEditorPreview(0);
+        }
+
+        [KSPEvent(guiActive = false, guiActiveEditor = true,
+            guiName = "Start Synchronization Power", active = true)]
+        public void PreviewSynchronizationPower()
+        {
+            if (HighLogic.LoadedSceneIsEditor && powerController != null)
+                powerController.SetEditorPreview(1);
+        }
+
+        [KSPEvent(guiActive = false, guiActiveEditor = true,
+            guiName = "Start Operational Power", active = true)]
+        public void PreviewOperationalPower()
+        {
+            if (HighLogic.LoadedSceneIsEditor && powerController != null)
+                powerController.SetEditorPreview(2);
+        }
+
+        [KSPEvent(guiActive = false, guiActiveEditor = true,
+            guiName = "Stop Power Preview", active = true)]
+        public void StopPowerPreview()
+        {
+            if (HighLogic.LoadedSceneIsEditor && powerController != null)
+                powerController.SetEditorPreview(-1);
+        }
+
         [KSPEvent(
             guiActive = true,
             guiActiveEditor = false,
@@ -317,7 +387,10 @@ namespace QuantumRelay
         public void ExtendRelay()
         {
             if (deploymentController != null)
+            {
+                lastDeploymentExtended = true;
                 deploymentController.Invoke(true);
+            }
 
             ForceRefresh();
         }
@@ -330,7 +403,10 @@ namespace QuantumRelay
         public void RetractRelay()
         {
             if (deploymentController != null)
+            {
+                lastDeploymentExtended = false;
                 deploymentController.Invoke(false);
+            }
 
             ForceRefresh();
         }
@@ -392,12 +468,14 @@ namespace QuantumRelay
             if (deploymentState == QuantumRelayDeploymentState.Retracted ||
                 deploymentState == QuantumRelayDeploymentState.Retracting)
             {
+                lastDeploymentExtended = true;
                 deploymentController.Invoke(true);
             }
             else if (
                 deploymentState == QuantumRelayDeploymentState.Extended ||
                 deploymentState == QuantumRelayDeploymentState.Extending)
             {
+                lastDeploymentExtended = false;
                 deploymentController.Invoke(false);
             }
 
@@ -440,7 +518,8 @@ namespace QuantumRelay
             }
 
             RefreshDiagnostics();
-            EvaluateState(true);
+            UpdateBatteryProtection();
+            EvaluateState(!batteryProtectionLatched);
 
             // Effects are initialized after the part and its deployable modules
             // have completed startup. Keeping this work out of OnStart and
@@ -473,7 +552,8 @@ namespace QuantumRelay
                 Time.time + Math.Max(0.05, statusRefreshInterval);
 
             RefreshDiagnostics();
-            EvaluateState(true);
+            UpdateBatteryProtection();
+            EvaluateState(!batteryProtectionLatched);
             EnsureEffectsInitialized();
             UpdateEffectsState();
             CheckForTransmissionPulse();
@@ -495,6 +575,13 @@ namespace QuantumRelay
             }
 
             deploymentState = deploymentController.GetState();
+            ApplyDeploymentDirection();
+            UpdateBatteryProtection();
+            if (IsKerbalismRelayBroken())
+            {
+                deploymentState = QuantumRelayDeploymentState.Broken;
+                ResetSynchronization();
+            }
             RefreshCommNetStatus();
 
             bool hardwareReady =
@@ -528,8 +615,18 @@ namespace QuantumRelay
                     true,
                     synchronizationController.IsSynchronized);
 
+            // Keep the gateway's underlying operational state independent of
+            // routing telemetry: routing itself uses that state to discover links.
+            // Only the converter selection and PAW use the actual link status.
+            bool linked = HasActiveQuantumLink();
+            QuantumRelayOperationalState powerMode = prePowerState;
+            if (batteryProtectionLatched)
+                powerMode = QuantumRelayOperationalState.Retracted;
+            else if (prePowerState == QuantumRelayOperationalState.Operational && !linked)
+                powerMode = QuantumRelayOperationalState.Synchronizing;
+
             double requiredRate = powerController.GetRequiredRate(
-                prePowerState,
+                powerMode,
                 relayEnabled,
                 idlePowerRate,
                 synchronizationPowerRate,
@@ -537,12 +634,13 @@ namespace QuantumRelay
 
             bool hasPower = powerController.Consume(
                 part,
-                prePowerState,
+                powerMode,
                 requiredRate,
                 Math.Max(0.0, TimeWarp.fixedDeltaTime));
 
             bool canSynchronize =
                 relayEnabled &&
+                !batteryProtectionLatched &&
                 hardwareReady &&
                 hasPower &&
                 (!requiresCommNetHardware || hasCommNetHardware);
@@ -556,7 +654,114 @@ namespace QuantumRelay
             }
 
             PersistSynchronizationState();
-            EvaluateState(hasPower);
+            // Dedicated status indicator consumer, in addition to relay converters.
+            // Never drain the protected battery while suspended or manually disabled.
+            bool lightWanted = enableEffects && relayEnabled && !batteryProtectionLatched &&
+                hardwareReady && hasPower && !IsKerbalismRelayBroken();
+            statusLightPowered = false;
+            if (lightWanted)
+            {
+                double requested = StatusLightPowerRate * Math.Max(0.0, TimeWarp.fixedDeltaTime);
+                if (requested > 0.0)
+                    statusLightPowered = part.RequestResource("ElectricCharge", requested) >= requested * 0.999;
+            }
+            EvaluateState(hasPower && !batteryProtectionLatched);
+            UpdateEffectsState();
+        }
+
+        // Link telemetry is presentation/power-mode input only; never use it to
+        // determine IsOperational(), otherwise gateway discovery deadlocks.
+        private bool HasActiveQuantumLink()
+        {
+            if (part == null || part.vessel == null) return false;
+            foreach (ActiveQuantumLink link in QuantumRelayRuntimeState.Links)
+            {
+                if (link == null || !link.Online || !link.HasValidGateways) continue;
+                if (link.GatewayA.Vessel.id == part.vessel.id ||
+                    link.GatewayB.Vessel.id == part.vessel.id) return true;
+            }
+            return false;
+        }
+
+        private void UpdateBatteryProtection()
+        {
+            if (!HighLogic.LoadedSceneIsFlight || part == null || part.vessel == null)
+                return;
+            double available, capacity;
+            try
+            {
+                part.vessel.GetConnectedResourceTotals(
+                    PartResourceLibrary.ElectricityHashcode, out available, out capacity);
+            }
+            catch (Exception exception)
+            {
+                Debug.LogWarning("[QuantumRelay] Battery protection resource check: " + exception.Message);
+                return;
+            }
+            if (capacity <= 0.0001) return;
+            lastBatteryFraction = Math.Max(0.0, Math.Min(1.0, available / capacity));
+            double low = Math.Max(0.0, Math.Min(1.0, batteryShutdownFraction));
+            double high = Math.Max(low + 0.001, Math.Min(1.0, batteryRestartFraction));
+            if (!automaticPowerProtection)
+            {
+                batteryProtectionLatched = false;
+                batteryProtectionStatus = "OFF";
+                return;
+            }
+            if (!batteryProtectionLatched && lastBatteryFraction <= low)
+            {
+                batteryProtectionLatched = true;
+                ResetSynchronization();
+                if (powerController != null) powerController.Shutdown();
+            }
+            else if (batteryProtectionLatched && lastBatteryFraction >= high)
+            {
+                batteryProtectionLatched = false;
+                // Synchronization restarts normally; manual relay disable is respected.
+            }
+            batteryProtectionStatus = batteryProtectionLatched
+                ? string.Format("Suspended ({0:P0})", lastBatteryFraction)
+                : string.Format("Armed ({0:P0})", lastBatteryFraction);
+        }
+
+        // The stock ModuleAnimateGeneric reports progress but not direction.
+        // Track the last known deployment command and correct its mid-animation label.
+        private void ApplyDeploymentDirection()
+        {
+            if (deploymentState != QuantumRelayDeploymentState.Extending ||
+                !lastDeploymentExtended.HasValue) return;
+            if (!lastDeploymentExtended.Value)
+                deploymentState = QuantumRelayDeploymentState.Retracting;
+        }
+
+        // Called in flight and during status refresh. Kerbalism owns the
+        // failure/quality/repair UI and persistence; QR only gates operation.
+        private bool IsKerbalismRelayBroken()
+        {
+            if (part == null || part.Modules == null)
+                return false;
+
+            foreach (PartModule module in part.Modules)
+            {
+                if (module == null || module.moduleName != "Reliability")
+                    continue;
+
+                // Only the Quantum Relay reliability entry may disable the
+                // gateway; unrelated part failures should not do so.
+                BaseField typeField = module.Fields != null
+                    ? module.Fields["type"] : null;
+                if (typeField == null ||
+                    !string.Equals(Convert.ToString(typeField.GetValue(module)),
+                        "QuantumRelay", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                BaseField brokenField = module.Fields["broken"];
+                if (brokenField != null &&
+                    string.Equals(Convert.ToString(brokenField.GetValue(module)),
+                        "True", StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+            return false;
         }
 
         public bool IsOperational()
@@ -572,6 +777,11 @@ namespace QuantumRelay
                 return;
 
             QuantumRelayOperationalState previousState = operationalState;
+
+            // Kerbalism Reliability is optional; inspect its persisted broken
+            // field through KSP's PartModule API without referencing Kerbalism.dll.
+            if (IsKerbalismRelayBroken())
+                deploymentState = QuantumRelayDeploymentState.Broken;
 
             operationalState = stateMachine.Evaluate(
                 relayEnabled,
@@ -671,7 +881,13 @@ namespace QuantumRelay
                 if (visualController != null)
                     visualController.SetOperationalState(
                         operationalState,
-                        SynchronizationFraction);
+                        SynchronizationFraction,
+                        relayEnabled && statusLightPowered,
+                        deploymentState == QuantumRelayDeploymentState.Extended ||
+                            deploymentState == QuantumRelayDeploymentState.Fixed,
+                        batteryProtectionLatched,
+                        HasActiveQuantumLink(),
+                        IsSynchronized);
             }
             catch (Exception exception)
             {
@@ -750,7 +966,10 @@ namespace QuantumRelay
         private void RefreshDiagnostics()
         {
             if (deploymentController != null)
+            {
                 deploymentState = deploymentController.GetState();
+                ApplyDeploymentDirection();
+            }
 
             RefreshPowerStatus();
             RefreshCommNetStatus();
@@ -817,9 +1036,8 @@ namespace QuantumRelay
                         vessel,
                         out evidence);
 
-                commNetStatus = hasCommNetHardware
-                    ? "Detected"
-                    : "Not Detected";
+                // Hardware detection is an internal prerequisite, not the PAW
+                // communication-availability indicator. UpdateDisplayFields owns it.
             }
             catch (Exception exception)
             {
@@ -837,15 +1055,53 @@ namespace QuantumRelay
             relayModelStatus = relayModel;
             relayStatus =
                 RelayStateMachine.GetDisplayName(operationalState);
+            bool partnerLinked = HasActiveQuantumLink();
+            // Show actual communications availability, not hardware detection or
+            // local quantum synchronization. A B-side relay without a route is
+            // unavailable until the quantum bridge establishes a valid link.
+            bool stockCommNetAvailable = false;
+            try
+            {
+                Vessel vessel = part != null ? part.vessel : null;
+                stockCommNetAvailable = vessel != null &&
+                    vessel.Connection != null && vessel.Connection.IsConnected;
+            }
+            catch (Exception exception)
+            {
+                Debug.LogWarning("[QuantumRelay] Unable to read vessel CommNet connection: " +
+                    exception.Message);
+            }
+            commNetStatus = (stockCommNetAvailable || partnerLinked)
+                ? "Available" : "Unavailable";
+            bool searching = relayEnabled && !batteryProtectionLatched &&
+                (deploymentState == QuantumRelayDeploymentState.Extended ||
+                 deploymentState == QuantumRelayDeploymentState.Fixed) &&
+                IsSynchronized && !partnerLinked;
+            if (batteryProtectionLatched)
+                relayStatus = "Power Saving";
+            else if (searching)
+                relayStatus = "Disconnected";
             deploymentStatus =
                 RelayDeploymentController.GetDisplayName(deploymentState);
-            operationalStatus = IsOperational() ? "YES" : "NO";
+            connectionStatus = batteryProtectionLatched ? "Waiting for Battery Recovery" :
+                searching ? "Searching for Partner" :
+                partnerLinked ? "Locked" : RelayStateMachine.GetDisplayName(operationalState);
+            operationalStatus = IsOperational() && partnerLinked &&
+                !batteryProtectionLatched ? "YES" : "NO";
 
             powerUsageStatus = string.Format(
                 "{0:N2} EC/s",
-                CurrentPowerRate);
+                CurrentPowerRate + (statusLightPowered ? StatusLightPowerRate : 0.0));
 
-            if (!relayEnabled &&
+            if (batteryProtectionLatched)
+            {
+                synchronizationStatus = "Suspended - Low Battery";
+            }
+            else if (searching)
+            {
+                synchronizationStatus = "Quantum Link Unavailable";
+            }
+            else if (!relayEnabled &&
                 (deploymentState == QuantumRelayDeploymentState.Extended ||
                  deploymentState == QuantumRelayDeploymentState.Fixed))
             {

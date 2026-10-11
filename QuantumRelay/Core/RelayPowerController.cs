@@ -80,9 +80,9 @@ namespace QuantumRelay
                 synchronizationConverter != null &&
                 operationalConverter != null;
 
-            HideConverterInterface(idleConverter);
-            HideConverterInterface(synchronizationConverter);
-            HideConverterInterface(operationalConverter);
+            ConfigureConverterInterface(idleConverter);
+            ConfigureConverterInterface(synchronizationConverter);
+            ConfigureConverterInterface(operationalConverter);
 
             StopAllConverters();
 
@@ -92,6 +92,22 @@ namespace QuantumRelay
                     "[QuantumRelay] Stock power converters were not found. " +
                     "Falling back to direct ElectricCharge consumption.");
             }
+        }
+
+        // VAB-only manual selection for Kerbalism's resource simulator.
+        // Never used during flight; Consume() owns flight converter switching.
+        public void SetEditorPreview(int mode)
+        {
+            if (!HighLogic.LoadedSceneIsEditor)
+                return;
+
+            StopAllConverters();
+            if (mode == 0)
+                SetConverterActive(idleConverter, true);
+            else if (mode == 1)
+                SetConverterActive(synchronizationConverter, true);
+            else if (mode == 2)
+                SetConverterActive(operationalConverter, true);
         }
 
         public double GetRequiredRate(
@@ -221,13 +237,18 @@ namespace QuantumRelay
                     break;
             }
 
-            SetConverterActive(idleConverter, target == idleConverter);
-            SetConverterActive(
-                synchronizationConverter,
-                target == synchronizationConverter);
-            SetConverterActive(
-                operationalConverter,
-                target == operationalConverter);
+            // Shut down every non-target converter BEFORE starting the target.
+            // The previous implementation could start the target before stopping
+            // an older converter, allowing overlapping consumption during a tick.
+            if (idleConverter != target)
+                SetConverterActive(idleConverter, false);
+            if (synchronizationConverter != target)
+                SetConverterActive(synchronizationConverter, false);
+            if (operationalConverter != target)
+                SetConverterActive(operationalConverter, false);
+
+            if (target != null)
+                SetConverterActive(target, true);
         }
 
         private void StopAllConverters()
@@ -264,7 +285,7 @@ namespace QuantumRelay
             }
         }
 
-        private static void HideConverterInterface(
+        private static void ConfigureConverterInterface(
             ModuleResourceConverter converter)
         {
             if (converter == null)
@@ -278,7 +299,7 @@ namespace QuantumRelay
             if (statusField != null)
             {
                 statusField.guiActive = false;
-                statusField.guiActiveEditor = false;
+                statusField.guiActiveEditor = true;
             }
         }
 
@@ -291,9 +312,12 @@ namespace QuantumRelay
             if (moduleEvent == null)
                 return;
 
-            moduleEvent.active = false;
+            // Expose stock converter controls in the VAB for Kerbalism
+            // simulation and quality configuration. Flight operation remains
+            // managed exclusively by RelayPowerController.
+            moduleEvent.active = true;
             moduleEvent.guiActive = false;
-            moduleEvent.guiActiveEditor = false;
+            moduleEvent.guiActiveEditor = true;
         }
     }
 }
