@@ -1,0 +1,18 @@
+# Generated .NET / MSBuild intermediates
+**/obj/
+**/bin/
+.vs/
+*.user
+*.suo
+*.pdb
+*.mdb
+*.cache
+*.tmp
+
+# Local editor and machine files
+.DS_Store
+Thumbs.db
+*.log
+
+# Build-staged game content. Distributed separately as a GameData ZIP.
+/GameData/QuantumRelay/

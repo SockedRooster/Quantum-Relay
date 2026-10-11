@@ -19,7 +19,7 @@
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <KSPRoot Condition=" '$(KSPRoot)' == '' ">D:\SteamLibrary\steamapps\common\Kerbal Space Program</KSPRoot>
     <KSPManaged Condition=" '$(KSPManaged)' == '' ">$(KSPRoot)\KSP_x64_Data\Managed</KSPManaged>
-    <OutputPath>..\..\GameData\QuantumRelay\Plugins\</OutputPath>
+    <OutputPath>..\GameData\QuantumRelay\Plugins\</OutputPath>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="AssemblyInfo.cs" />
@@ -72,10 +72,25 @@
     <Reference Include="UnityEngine.AnimationModule"><HintPath>$(KSPManaged)\UnityEngine.AnimationModule.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="UnityEngine.AudioModule"><HintPath>$(KSPManaged)\UnityEngine.AudioModule.dll</HintPath><Private>false</Private></Reference>
   </ItemGroup>
+  <!-- Stage runtime assets inside this repository for packaging (not outside the repo). -->
+  <Target Name="CopyQuantumRelayParts" AfterTargets="Build">
+    <ItemGroup>
+      <QuantumRelayPartCfg Include="$(MSBuildProjectDirectory)\Parts\*.cfg" />
+    </ItemGroup>
+    <MakeDir Directories="$(MSBuildProjectDirectory)\..\GameData\QuantumRelay\Parts" />
+    <Copy SourceFiles="@(QuantumRelayPartCfg)"
+          DestinationFolder="$(MSBuildProjectDirectory)\..\GameData\QuantumRelay\Parts"
+          SkipUnchangedFiles="true" />
+  </Target>
+  <Target Name="CopyQuantumRelayLicense" AfterTargets="Build">
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\LICENSE"
+          DestinationFolder="$(MSBuildProjectDirectory)\..\GameData\QuantumRelay"
+          SkipUnchangedFiles="true" />
+  </Target>
   <Target Name="CopyQuantumRelaySounds" AfterTargets="Build">
-    <MakeDir Directories="..\..\GameData\QuantumRelay\Sounds" />
+    <MakeDir Directories="$(MSBuildProjectDirectory)\..\GameData\QuantumRelay\Sounds" />
     <Copy SourceFiles="Sounds\Activation.wav;Sounds\TransmissionPulse.ogg"
-          DestinationFolder="..\..\GameData\QuantumRelay\Sounds"
+          DestinationFolder="$(MSBuildProjectDirectory)\..\GameData\QuantumRelay\Sounds"
           SkipUnchangedFiles="true" />
   </Target>
 </Project>
