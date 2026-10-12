@@ -1,13 +1,17 @@
 # Quantum Relay — Development Roadmap
 
-This document tracks **planned** features, not functionality in released builds. Milestones are targets; scope and versions may be adjusted after testing.
+This document records completed stabilization work and **planned** future features. Planned milestones may change after testing.
 
-## Near term — Stabilization before v1.15
+## Completed — v1.03 stabilization
 
-- Restore all relay interactions in the VAB and verify functional buttons.
-- Restore persistence for the user's resized Quantum Relay menu across scene changes and save reloads.
-- Regression-test simultaneous quantum links, established wormhole networks, save/load behavior and CommNet integration before adding new science modules.
-- Validate recent UI and network diagnostics against existing saved games.
+- VAB relay controls, native Kerbalism planner refresh, and duplicate preview EC prevention.
+- Window size/position and settings persistence, menu scaling, and HUD display controls.
+- Verified cyan quantum-route HUD and responsive network schematic with active-route highlighting.
+- Compact Status and all-network gateway Diagnostics for Debdeb/Tuun.
+- Fresh-load unloaded-gateway lookup and rebuilds after CommNet node replacement.
+- Maintainer reports all in-game acceptance checks passed through v1.03V; release packaging uses that code with release metadata. Automated checks are separately documented in RELEASE_NOTES_v1.03.md.
+
+Next development milestone: the v1.15 survey instrument described below. It is not included in v1.03.
 
 ## v1.15 — QSA-100 Quantum Survey Array (planned)
 

@@ -164,7 +164,7 @@ namespace QuantumRelay
             QueueRebuild();
         }
 
-        public static void QueueRebuildNow() { QueueRebuild(); }
+        public static void QueueRebuildNow() { QueueRebuild(true); }
 
         private static bool SamePairs(List<GatewayPair> current, List<GatewayPair> next)
         {
@@ -178,6 +178,7 @@ namespace QuantumRelay
                     GatewayPair b = next[j];
                     if (string.Equals(a.Id, b.Id, StringComparison.Ordinal) &&
                         a.VesselA == b.VesselA && a.VesselB == b.VesselB &&
+                        ReferenceEquals(a.NodeA, b.NodeA) && ReferenceEquals(a.NodeB, b.NodeB) &&
                         Math.Abs(a.SignalQuality - b.SignalQuality) < 0.0001)
                     {
                         found = true;
@@ -249,8 +250,9 @@ namespace QuantumRelay
             catch { return null; }
         }
 
-        private static void QueueRebuild()
+        private static void QueueRebuild(bool force = false)
         {
+            if (!force && !QuantumRelaySettings.AutoRebuildCommNet) return;
             try { if (CommNetNetwork.Instance != null) CommNetNetwork.Instance.QueueRebuild(); }
             catch (Exception ex) { Debug.LogWarning("[QuantumRelay] Unable to queue CommNet rebuild: " + ex.Message); }
         }

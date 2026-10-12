@@ -5,9 +5,9 @@ using UnityEngine;
 
 namespace QuantumRelay
 {
-    /// <summary>v1.6.0 multi-scene toolbar, network overview, settings, diagnostics and about console.</summary>
+    /// <summary>Multi-scene toolbar, network overview, settings, diagnostics and about console.</summary>
     [KSPAddon(KSPAddon.Startup.EveryScene, false)]
-    internal sealed class QuantumRelayGui : MonoBehaviour
+    internal sealed partial class QuantumRelayGui : MonoBehaviour
     {
         private const int WindowId = 0x51524C59;
         private const float DefaultWindowWidth = 560f;
@@ -17,11 +17,15 @@ namespace QuantumRelay
         private const float ResizeGripSize = 24f;
         private const int ResizeControlHint = 0x51525253;
 
-        private enum Page { Status, Settings, Diagnostics, About }
+        private enum Page { Status, Map, Settings, Diagnostics, About }
         private enum NetworkSort { Name, Gateway }
 
         private ApplicationLauncherButton _button;
         private Texture2D _toolbarTexture;
+        private GUISkin _windowSkin;
+        private GUIStyle _tooltipStyle;
+        private readonly Dictionary<string, bool> _expandedDiagnostics = new Dictionary<string, bool>();
+        private bool _showEventHistory;
         private Rect _windowRect = new Rect(260f, 100f, DefaultWindowWidth, DefaultWindowHeight);
         private Vector2 _lastSavedPosition;
         private float _savePositionAfter;
@@ -43,6 +47,10 @@ namespace QuantumRelay
         private bool _draftAutoRebuild;
         private bool _draftMessages;
         private bool _draftDebug;
+        private bool _draftShowHud, _draftFollowStock;
+        private float _draftHudX, _draftHudY, _draftUiScale;
+        private float _guiScale = 1f;
+        private bool _restoreLayout;
         private string _localTicker = "Ready.";
 
         
@@ -65,6 +73,7 @@ public void Start()
                 "[QuantumRelay] GUI starting in supported scene: " +
                 HighLogic.LoadedScene);
 
+            QuantumRelaySettings.Load();
             CopySettingsToDraft();
             _windowRect.x = QuantumRelaySettings.WindowX;
             _windowRect.y = QuantumRelaySettings.WindowY;
@@ -72,6 +81,7 @@ public void Start()
             _windowRect.height = QuantumRelaySettings.WindowHeight;
             _lastSavedPosition = new Vector2(_windowRect.x, _windowRect.y);
             _lastSavedSize = new Vector2(_windowRect.width, _windowRect.height);
+            ClampWindowSize();
             GameEvents.onGUIApplicationLauncherReady.Add(OnAppLauncherReady);
             GameEvents.onGUIApplicationLauncherDestroyed.Add(OnAppLauncherDestroyed);
                         _quantumRelayEventsRegistered = true;
@@ -94,6 +104,7 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
                 SaveWindowPositionNow();
                 RemoveButton();
             }
+            if (_windowSkin != null) Destroy(_windowSkin);
 
             _visible = false;
             _quantumRelaySceneActive = false;
@@ -131,13 +142,38 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
         }
 
         private void ShowWindow() { _visible = true; }
-        private void HideWindow() { _visible = false; }
+        private void HideWindow() { SaveWindowPositionNow(); _visible = false; }
+        public void OnApplicationQuit() { if (_quantumRelaySceneActive) SaveWindowPositionNow(); }
 
         public void OnGUI()
         {
             if (!_quantumRelaySceneActive || !IsSupportedScene()) return;
             if (!_visible) return;
-            GUI.skin = HighLogic.Skin;
+            if (Event.current.type == EventType.Layout)
+            {
+                _guiScale = QuantumRelaySettings.UiScale;
+                if (_restoreLayout)
+                {
+                    _windowRect = new Rect(QuantumRelaySettings.WindowX, QuantumRelaySettings.WindowY,
+                        QuantumRelaySettings.WindowWidth, QuantumRelaySettings.WindowHeight);
+                    _lastSavedPosition = new Vector2(_windowRect.x, _windowRect.y);
+                    _lastSavedSize = new Vector2(_windowRect.width, _windowRect.height);
+                    _savePositionAfter = 0f;
+                    _restoreLayout = false;
+                }
+            }
+            Matrix4x4 oldMatrix = GUI.matrix;
+            GUISkin oldSkin = GUI.skin;
+            try
+            {
+            GUI.matrix = oldMatrix * Matrix4x4.Scale(new Vector3(_guiScale, _guiScale, 1f));
+            if (_windowSkin == null)
+            {
+                _windowSkin = Instantiate(HighLogic.Skin);
+                _windowSkin.label.wordWrap = true;
+                _windowSkin.button.wordWrap = true;
+            }
+            GUI.skin = _windowSkin;
             ClampWindowSize();
             _windowRect = GUILayout.Window(
                 WindowId,
@@ -145,18 +181,32 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
                 DrawWindow,
                 "Quantum Relay " + QuantumRelayConstants.DisplayVersion,
                 GUILayout.Width(_windowRect.width),
-                GUILayout.Height(_windowRect.height));
+                GUILayout.Height(_windowRect.height),
+                GUILayout.MaxWidth(_windowRect.width),
+                GUILayout.MaxHeight(_windowRect.height));
 
             ClampWindowSize();
             _windowRect.x = Mathf.Clamp(
                 _windowRect.x,
                 0f,
-                Mathf.Max(0f, Screen.width - _windowRect.width));
+                Mathf.Max(0f, Screen.width / _guiScale - _windowRect.width));
             _windowRect.y = Mathf.Clamp(
                 _windowRect.y,
                 0f,
-                Mathf.Max(0f, Screen.height - 36f));
+                Mathf.Max(0f, Screen.height / _guiScale - _windowRect.height));
             QueueWindowPositionSave();
+            if (_page == Page.Map && !string.IsNullOrEmpty(GUI.tooltip))
+            {
+                if (_tooltipStyle == null) _tooltipStyle = new GUIStyle(GUI.skin.box) { wordWrap = true };
+                float width = Mathf.Min(360f, Screen.width / _guiScale - 20f);
+                float height = _tooltipStyle.CalcHeight(new GUIContent(GUI.tooltip), width);
+                Vector2 pointer = Event.current.mousePosition;
+                GUI.Box(new Rect(Mathf.Clamp(pointer.x + 12f, 0f, Screen.width / _guiScale - width),
+                    Mathf.Clamp(pointer.y + 24f, 0f, Screen.height / _guiScale - height), width, height),
+                    GUI.tooltip, _tooltipStyle);
+            }
+            }
+            finally { GUI.matrix = oldMatrix; GUI.skin = oldSkin; }
         }
 
         private void DrawWindow(int windowId)
@@ -174,6 +224,7 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
             switch (_page)
             {
                 case Page.Status: DrawStatusPage(); break;
+                case Page.Map: DrawNetworkMapPage(); break;
                 case Page.Settings: DrawSettingsPage(); break;
                 case Page.Diagnostics: DrawDiagnosticsPage(); break;
                 case Page.About: DrawAboutPage(); break;
@@ -187,6 +238,7 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
 
             if (GUILayout.Button("Close"))
             {
+                SaveWindowPositionNow();
                 _visible = false;
                 if (_button != null) _button.SetFalse(false);
             }
@@ -248,7 +300,7 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
             {
                 Vector2 screenMouse = GUIUtility.GUIToScreenPoint(
                     current.mousePosition);
-                Vector2 delta = screenMouse - _resizeStartMouse;
+                Vector2 delta = (screenMouse - _resizeStartMouse) / _guiScale;
 
                 _windowRect.width = _resizeStartSize.x + delta.x;
                 _windowRect.height = _resizeStartSize.y + delta.y;
@@ -264,6 +316,7 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
             {
                 GUIUtility.hotControl = 0;
                 _resizing = false;
+                SaveWindowPositionNow();
                 current.Use();
             }
         }
@@ -272,10 +325,10 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
         {
             float maximumWidth = Mathf.Max(
                 MinimumWindowWidth,
-                Screen.width - 20f);
+                Screen.width / _guiScale - 20f);
             float maximumHeight = Mathf.Max(
                 MinimumWindowHeight,
-                Screen.height - 20f);
+                Screen.height / _guiScale - 20f);
 
             _windowRect.width = Mathf.Clamp(
                 _windowRect.width,
@@ -289,12 +342,15 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
 
         private void DrawTabs()
         {
+            Page previousPage = _page;
             GUILayout.BeginHorizontal();
             if (GUILayout.Toggle(_page == Page.Status, "Status", GUI.skin.button)) _page = Page.Status;
+            if (GUILayout.Toggle(_page == Page.Map, "Map", GUI.skin.button)) _page = Page.Map;
             if (GUILayout.Toggle(_page == Page.Settings, "Settings", GUI.skin.button)) _page = Page.Settings;
             if (GUILayout.Toggle(_page == Page.Diagnostics, "Diagnostics", GUI.skin.button)) _page = Page.Diagnostics;
             if (GUILayout.Toggle(_page == Page.About, "About", GUI.skin.button)) _page = Page.About;
             GUILayout.EndHorizontal();
+            if (_page != previousPage) _scroll = Vector2.zero;
         }
 
         private void DrawStatusPage()
@@ -334,11 +390,6 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
             GUI.enabled = oldEnabled;
             GUILayout.EndHorizontal();
 
-            if (flight)
-            {
-                DrawGatewayActions("A", QuantumRelayRuntimeState.GatewayA);
-                DrawGatewayActions("B", QuantumRelayRuntimeState.GatewayB);
-            }
         }
 
         private static void DrawBridgeHeader(bool flight)
@@ -384,13 +435,12 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
 
             GUILayout.BeginHorizontal();
             GUILayout.Label("Sort", GUILayout.Width(55f));
-            if (GUILayout.Toggle(_networkSort == NetworkSort.Name, "Name", GUI.skin.button))
+            if (GUILayout.Toggle(_networkSort == NetworkSort.Name, "Name", GUI.skin.button, GUILayout.Width(75f)))
                 _networkSort = NetworkSort.Name;
-            if (GUILayout.Toggle(_networkSort == NetworkSort.Gateway, "Gateway", GUI.skin.button))
+            if (GUILayout.Toggle(_networkSort == NetworkSort.Gateway, "Gateway", GUI.skin.button, GUILayout.Width(85f)))
                 _networkSort = NetworkSort.Gateway;
+            _onlineOnly = GUILayout.Toggle(_onlineOnly, "Online only");
             GUILayout.EndHorizontal();
-
-            _onlineOnly = GUILayout.Toggle(_onlineOnly, "Show online networks only");
             GUILayout.EndVertical();
         }
 
@@ -555,10 +605,13 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
                     "  <->  " +
                     GetTelemetryEndpointName(network.GatewayB));
 
-                GUILayout.Label(
-                    GetTelemetryVesselName(network.GatewayA) +
-                    "  <->  " +
-                    GetTelemetryVesselName(network.GatewayB));
+                GUILayout.Label(network.Online && network.GatewayA != null && network.GatewayB != null
+                    ? GetTelemetryVesselName(network.GatewayA) + "  <->  " +
+                      GetTelemetryVesselName(network.GatewayB) + "    Signal: " +
+                      FormatPercent(Math.Min(
+                          network.GatewayA.HasQuantumRelayModule ? network.GatewayA.RelaySignalStrength : 0.25,
+                          network.GatewayB.HasQuantumRelayModule ? network.GatewayB.RelaySignalStrength : 0.25))
+                    : "No Partner Connected    Signal: unavailable");
 
                 if (expanded)
                 {
@@ -756,10 +809,13 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
                     "  <->  " +
                     GetLinkEndpointName(link.GatewayB));
 
-                GUILayout.Label(
-                    GetLinkVesselName(link.GatewayA) +
-                    "  <->  " +
-                    GetLinkVesselName(link.GatewayB));
+                GUILayout.Label(link.Online && link.HasValidGateways
+                    ? GetLinkVesselName(link.GatewayA) + "  <->  " +
+                      GetLinkVesselName(link.GatewayB) + "    Signal: " +
+                      FormatPercent(Math.Min(
+                          link.GatewayA.HasQuantumRelayModule ? link.GatewayA.RelaySignalStrength : 0.25,
+                          link.GatewayB.HasQuantumRelayModule ? link.GatewayB.RelaySignalStrength : 0.25))
+                    : "No Partner Connected    Signal: unavailable");
 
                 if (expanded)
                 {
@@ -832,8 +888,8 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
             if (states.TryGetValue(key, out expanded))
                 return expanded;
 
-            states[key] = true;
-            return true;
+            states[key] = false;
+            return false;
         }
 
         private static void DrawExpandCollapseControls(
@@ -919,10 +975,8 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
             GUILayout.BeginVertical(GUI.skin.box);
             DrawSectionTitle("NETWORK SUMMARY");
             GUILayout.BeginHorizontal();
-            DrawStatistic("Networks", networks.ToString());
-            DrawStatistic("Online", online.ToString());
-            DrawStatistic("Offline", Math.Max(0, networks - online).ToString());
-            DrawStatistic("Gateways", gateways.ToString());
+            GUILayout.Label(networks + " networks | " + online + " online | " +
+                Math.Max(0, networks - online) + " offline | " + gateways + " gateways");
             GUILayout.EndHorizontal();
             GUILayout.Label(
                 (flight ? "Live" : "Last known") +
@@ -1149,11 +1203,29 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
             GUILayout.Space(6f);
             _draftAutoRebuild = GUILayout.Toggle(_draftAutoRebuild, "Automatically rebuild CommNet after changes");
             _draftMessages = GUILayout.Toggle(_draftMessages, "Show screen messages");
-            _draftDebug = GUILayout.Toggle(_draftDebug, "Enable debug logging");
+            _draftDebug = GUILayout.Toggle(_draftDebug, "Enable detailed gateway logging");
+            GUILayout.Space(8f);
+            GUILayout.Label("Flight badge");
+            _draftShowHud = GUILayout.Toggle(_draftShowHud, "Show flight route badge");
+            _draftFollowStock = GUILayout.Toggle(_draftFollowStock, "Keep badge below stock communications bar");
+            if (!_draftFollowStock)
+            {
+                DrawStepSetting("Badge horizontal position (pixels)", _draftHudX.ToString("0"),
+                    () => _draftHudX = Mathf.Max(0f, _draftHudX - 10f), () => _draftHudX += 10f);
+                DrawStepSetting("Badge vertical position (pixels)", _draftHudY.ToString("0"),
+                    () => _draftHudY = Mathf.Max(0f, _draftHudY - 10f), () => _draftHudY += 10f);
+            }
+            DrawStepSetting("Menu scale", (_draftUiScale * 100f).ToString("0") + "%",
+                () => _draftUiScale = Mathf.Max(0.75f, _draftUiScale - 0.05f),
+                () => _draftUiScale = Mathf.Min(1.5f, _draftUiScale + 0.05f));
+            GUILayout.Label("Display changes take effect after Apply and Save. Window layout saves automatically.");
             GUILayout.Space(8f);
 
             if (GUILayout.Button("Apply and Save"))
             {
+                SaveWindowPositionNow();
+                QuantumRelaySettings.ApplyDisplay(_draftShowHud, _draftFollowStock,
+                    _draftHudX, _draftHudY, _draftUiScale);
                 bool networkChanged = QuantumRelaySettings.Apply(
                     _draftAutoRebuild, _draftMessages, _draftDebug, true);
                 if (networkChanged)
@@ -1161,8 +1233,8 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
                     QuantumRelayCommands.RequestRefresh();
                     if (QuantumRelaySettings.AutoRebuildCommNet) QuantumRelayCommands.RequestRebuild();
                 }
-                _localTicker = "Settings saved.";
-                QuantumRelayNotifications.Post("settings-saved", "Settings saved.", false);
+                _localTicker = QuantumRelaySettings.LastSaveSucceeded ? "Settings saved." : "Settings applied; file save failed. Check KSP.log.";
+                QuantumRelayNotifications.Post("settings-save", _localTicker, false);
             }
 
             GUILayout.BeginHorizontal();
@@ -1170,6 +1242,7 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
             {
                 QuantumRelaySettings.Load();
                 CopySettingsToDraft();
+                _restoreLayout = true;
                 QuantumRelayCommands.RequestRefresh();
                 if (QuantumRelaySettings.AutoRebuildCommNet) QuantumRelayCommands.RequestRebuild();
                 _localTicker = "Settings reloaded.";
@@ -1178,9 +1251,10 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
             {
                 QuantumRelaySettings.ResetDefaults(true);
                 CopySettingsToDraft();
+                _restoreLayout = true;
                 QuantumRelayCommands.RequestRefresh();
                 QuantumRelayCommands.RequestRebuild();
-                _localTicker = "Default settings restored.";
+                _localTicker = QuantumRelaySettings.LastSaveSucceeded ? "Default settings restored and saved." : "Defaults restored; file save failed. Check KSP.log.";
             }
             GUILayout.EndHorizontal();
         }
@@ -1197,53 +1271,126 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
             GUILayout.EndVertical();
         }
 
-        private static void DrawDiagnosticsPage()
+        private static bool _showDetailedDiagnostics;
+
+        private void DrawDiagnosticsPage()
         {
-            GUILayout.Label("Runtime Diagnostics");
-            DrawGatewayDiagnostics("Gateway A", QuantumRelayRuntimeState.GatewayA);
-            GUILayout.Space(5f);
-            DrawGatewayDiagnostics("Gateway B", QuantumRelayRuntimeState.GatewayB);
-            GUILayout.Space(5f);
+            GUILayout.Label("Quantum Network Diagnostics");
+            IList<NetworkTelemetry> networks = QuantumRelayRegistry.Networks;
+            int online = 0;
+            foreach (NetworkTelemetry network in networks)
+                if (network != null && network.Online) online++;
 
             GUILayout.BeginVertical(GUI.skin.box);
-            GUILayout.Label("Bridge");
-            GUILayout.Label("CommNet hook: " + (CommNetNetworkInstaller.IsInstalled ? "INSTALLED" : "NOT INSTALLED"));
-            GUILayout.Label("Gateway pair active: " + (QuantumGatewayManager.Active ? "YES" : "NO"));
-            GUILayout.Label("Gateway radius: " + FormatNumber(QuantumRelaySettings.GatewayRadiusMetres / 1000.0) + " km");
-            double gatewayAPower =
-                QuantumRelayRuntimeState.GatewayA != null
-                    ? Math.Max(
-                        0.0,
-                        QuantumRelayRuntimeState.GatewayA.RelayPowerRate)
-                    : 0.0;
-            double gatewayBPower =
-                QuantumRelayRuntimeState.GatewayB != null
-                    ? Math.Max(
-                        0.0,
-                        QuantumRelayRuntimeState.GatewayB.RelayPowerRate)
-                    : 0.0;
-
-            GUILayout.Label(
-                "Gateway A live draw: " +
-                FormatNumber(gatewayAPower) +
-                " EC/s");
-            GUILayout.Label(
-                "Gateway B live draw: " +
-                FormatNumber(gatewayBPower) +
-                " EC/s");
-            GUILayout.Label(
-                "Combined live draw: " +
-                FormatNumber(gatewayAPower + gatewayBPower) +
-                " EC/s");
-            GUILayout.Label("Last state update UT: " + FormatNumber(QuantumRelayRuntimeState.UpdatedUt));
-            GUILayout.Label("Version: " + QuantumRelayConstants.DisplayVersion);
-            GUILayout.Label("Registry telemetry: " + (QuantumRelayRegistry.HasTelemetry ? "AVAILABLE" : "NONE"));
-            GUILayout.Label("Registry age: " + QuantumRelayRegistry.AgeText());
-            GUILayout.Space(5f);
-            GUILayout.Label("Recent events");
-            foreach (string item in QuantumRelayNotifications.History)
-                GUILayout.Label(item);
+            GUILayout.Label("Network health");
+            GUILayout.Label("Active quantum links: " + online + " / " + networks.Count);
+            GUILayout.Label("CommNet hook (current scene): " +
+                (!HighLogic.LoadedSceneIsFlight ? "FLIGHT-ONLY CHECK" :
+                 CommNetNetworkInstaller.IsInstalled ? "INSTALLED" : "NOT INSTALLED"));
+            GUILayout.Label("Telemetry: " +
+                (QuantumRelayRegistry.HasTelemetry ? "AVAILABLE" : "NOT AVAILABLE") +
+                " | Age: " + QuantumRelayRegistry.AgeText());
+            GUILayout.Label(HighLogic.LoadedSceneIsFlight
+                ? "Hook installation does not prove an active routed quantum edge."
+                : "Saved telemetry shown. Live CommNet hook checks require flight.");
             GUILayout.EndVertical();
+
+            foreach (NetworkTelemetry network in networks)
+            {
+                if (network == null) continue;
+                GUILayout.BeginVertical(GUI.skin.box);
+                GUILayout.Label(SafeName(network.DisplayName) + " — " +
+                    (network.Online ? "ONLINE" : "OFFLINE"));
+                GUILayout.Label("Gateway A: " + GetTelemetryVesselName(network.GatewayA));
+                GUILayout.Label("Gateway B: " + GetTelemetryVesselName(network.GatewayB));
+                if (network.Online && network.GatewayA != null && network.GatewayB != null)
+                    GUILayout.Label("Combined link signal: " + FormatPercent(Math.Min(
+                        network.GatewayA.HasQuantumRelayModule ? network.GatewayA.RelaySignalStrength : 0.25,
+                        network.GatewayB.HasQuantumRelayModule ? network.GatewayB.RelaySignalStrength : 0.25)));
+                else
+                    GUILayout.Label("Link signal: unavailable | Reason: " + SafeName(network.Reason));
+                GUILayout.EndVertical();
+            }
+
+            GUILayout.BeginVertical(GUI.skin.box);
+            GUILayout.Label("Gateway readiness");
+            if (HighLogic.LoadedSceneIsFlight)
+            {
+                if (QuantumRelayRuntimeState.Links.Count == 0)
+                    GUILayout.Label("No live gateway telemetry yet.");
+                foreach (var link in QuantumRelayRuntimeState.Links)
+                {
+                    if (link == null) continue;
+                    DrawFlightGatewayFoldout(link.Id + ":A", link.SafeDisplayName + " / Gateway A", link.GatewayA);
+                    DrawFlightGatewayFoldout(link.Id + ":B", link.SafeDisplayName + " / Gateway B", link.GatewayB);
+                }
+            }
+            else
+            {
+                GUILayout.Label("Last-known readiness; live checks require flight.");
+                foreach (NetworkTelemetry network in networks)
+                {
+                    if (network == null) continue;
+                    DrawSavedGatewayFoldout(network.Id + ":A", SafeName(network.DisplayName) + " / Gateway A", network.GatewayA);
+                    DrawSavedGatewayFoldout(network.Id + ":B", SafeName(network.DisplayName) + " / Gateway B", network.GatewayB);
+                }
+            }
+            GUILayout.EndVertical();
+
+            _showDetailedDiagnostics = GUILayout.Toggle(_showDetailedDiagnostics,
+                "Show detailed runtime diagnostics");
+            if (_showDetailedDiagnostics)
+            {
+                GUILayout.BeginVertical(GUI.skin.box);
+                GUILayout.Label("Bridge runtime");
+                GUILayout.Label("Registered quantum pairs: " + QuantumGatewayManager.ActivePairCount);
+                GUILayout.Label("Gateway radius: " +
+                    FormatNumber(QuantumRelaySettings.GatewayRadiusMetres / 1000.0) + " km");
+                if (HighLogic.LoadedSceneIsFlight) DrawFlightPowerSummary();
+                else GUILayout.Label("Live power totals require flight.");
+                GUILayout.Label("Last runtime update UT: " +
+                    FormatNumber(QuantumRelayRuntimeState.UpdatedUt));
+                GUILayout.EndVertical();
+            }
+
+            GUILayout.BeginVertical(GUI.skin.box);
+            _showEventHistory = GUILayout.Toggle(_showEventHistory, "Recent events", GUI.skin.button);
+            if (_showEventHistory)
+                foreach (string item in QuantumRelayNotifications.History)
+                    GUILayout.Label(item);
+            GUILayout.EndVertical();
+        }
+
+        private void DrawFlightGatewayFoldout(string key, string heading, GatewayCandidate gateway)
+        {
+            bool ready = gateway != null && gateway.IsValid;
+            string summary = gateway == null || gateway.Vessel == null ? "Unavailable" :
+                SafeName(gateway.Vessel.vesselName) + " | " + SafeName(gateway.RelayOperationalState) +
+                " | " + FormatNumber(gateway.RelayPowerRate) + " EC/s";
+            if (DrawGatewayFoldout("live:" + key, heading, summary, ready))
+                DrawGatewayDiagnostics(heading, gateway);
+        }
+
+        private void DrawSavedGatewayFoldout(string key, string heading, GatewayTelemetry gateway)
+        {
+            string summary = gateway == null ? "No telemetry" :
+                SafeName(gateway.VesselName) + " | " + SafeName(gateway.RelayOperationalState) +
+                " | " + FormatNumber(gateway.RelayPowerRate) + " EC/s (saved)";
+            if (DrawGatewayFoldout("saved:" + key, heading, summary, gateway != null && gateway.Ready))
+                DrawGatewayTelemetry(heading, gateway);
+        }
+
+        private bool DrawGatewayFoldout(string key, string heading, string summary, bool ready)
+        {
+            bool expanded;
+            _expandedDiagnostics.TryGetValue(key, out expanded);
+            Color old = GUI.contentColor;
+            GUI.contentColor = ready ? Color.green : new Color(1f, 0.75f, 0.2f);
+            if (GUILayout.Button((expanded ? "v " : "> ") + heading + "\n" + summary))
+                expanded = !expanded;
+            GUI.contentColor = old;
+            _expandedDiagnostics[key] = expanded;
+            return expanded;
         }
 
         private static void DrawGatewayDiagnostics(string heading, GatewayCandidate gateway)
@@ -1328,52 +1475,11 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
             _draftAutoRebuild = QuantumRelaySettings.AutoRebuildCommNet;
             _draftMessages = QuantumRelaySettings.ShowScreenMessages;
             _draftDebug = QuantumRelaySettings.DebugLogging;
-        }
-
-        private void DrawGatewayActions(string label, GatewayCandidate gateway)
-        {
-            bool available = gateway != null && gateway.Vessel != null;
-            bool flightScene = HighLogic.LoadedSceneIsFlight;
-            bool loaded = flightScene && available && gateway.Vessel.loaded;
-
-            bool oldEnabled = GUI.enabled;
-            GUI.enabled = loaded;
-            if (GUILayout.Button("Focus Gateway " + label))
-                FocusGateway(gateway);
-            GUI.enabled = oldEnabled;
-
-            if (!flightScene)
-                GUILayout.Label("Gateway focus is available during flight.");
-            else if (available && !loaded)
-                GUILayout.Label(
-                    "Gateway " + label +
-                    " is on rails and cannot be focused.");
-        }
-
-        private void FocusGateway(GatewayCandidate gateway)
-        {
-            if (gateway == null || gateway.Vessel == null)
-            {
-                SetLocalStatus("No gateway is available to focus.");
-                return;
-            }
-
-            if (!gateway.Vessel.loaded)
-            {
-                SetLocalStatus(SafeName(gateway.Vessel.vesselName) +
-                    " is currently on rails and cannot be focused.");
-                return;
-            }
-
-            try
-            {
-                FlightGlobals.SetActiveVessel(gateway.Vessel);
-                SetLocalStatus("Focused " + SafeName(gateway.Vessel.vesselName) + ".");
-            }
-            catch (Exception ex)
-            {
-                SetLocalStatus("Unable to focus gateway: " + ex.Message);
-            }
+            _draftShowHud = QuantumRelaySettings.ShowFlightHud;
+            _draftFollowStock = QuantumRelaySettings.HudFollowStock;
+            _draftHudX = QuantumRelaySettings.HudX;
+            _draftHudY = QuantumRelaySettings.HudY;
+            _draftUiScale = QuantumRelaySettings.UiScale;
         }
 
         private void SetLocalStatus(string message)
@@ -1392,7 +1498,9 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
             bool sizeChanged =
                 (currentSize - _lastSavedSize).sqrMagnitude > 1f;
 
-            if (positionChanged || sizeChanged)
+            // Start the debounce once per change. Resetting the deadline on
+            // every OnGUI event prevented the window from ever being saved.
+            if ((positionChanged || sizeChanged) && _savePositionAfter <= 0f)
                 _savePositionAfter = Time.realtimeSinceStartup + 0.75f;
 
             if (_savePositionAfter > 0f &&
@@ -1404,6 +1512,7 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
 
         private void SaveWindowPositionNow()
         {
+            if (_restoreLayout) return;
             Vector2 currentPosition = new Vector2(_windowRect.x, _windowRect.y);
             Vector2 currentSize = new Vector2(_windowRect.width, _windowRect.height);
 
@@ -1413,13 +1522,22 @@ if (ApplicationLauncher.Ready) OnAppLauncherReady();
                 (currentSize - _lastSavedSize).sqrMagnitude > 1f;
 
             if (!positionChanged && !sizeChanged)
+            {
+                _savePositionAfter = 0f;
                 return;
+            }
 
             QuantumRelaySettings.SaveWindowLayout(
                 currentPosition.x,
                 currentPosition.y,
                 currentSize.x,
                 currentSize.y);
+
+            if (!QuantumRelaySettings.LastSaveSucceeded)
+            {
+                _savePositionAfter = Time.realtimeSinceStartup + 5f;
+                return;
+            }
 
             _lastSavedPosition = currentPosition;
             _lastSavedSize = currentSize;

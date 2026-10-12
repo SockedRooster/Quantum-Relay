@@ -1,4 +1,5 @@
-﻿using System;
+using System;
+using System.Collections.Generic;
 using QuantumRelay.Core;
 using UnityEngine;
 
@@ -49,6 +50,61 @@ namespace QuantumRelay
             guiName = "Quantum Relay")]
         public string relayStatus = "Standby";
 
+        // Editor-only diagnostics: selection and actual converter state are
+        // shown independently so Kerbalism planner issues can be isolated.
+        [KSPField(guiActive = false, guiActiveEditor = true,
+            guiName = "Power Preview")]
+        public string editorPowerPreviewStatus = "Off";
+
+        [KSPField(guiActive = false, guiActiveEditor = true,
+            guiName = "Power Backend")]
+        public string editorPowerModuleInventory = "Not inspected";
+
+        [KSPField(guiActive = false, guiActiveEditor = true,
+            guiName = "Selected EC Rate")]
+        public string editorSelectedEcRate = "0.00 EC/s";
+
+        // Optional Kerbalism reflection hook. It only reports editor estimates;
+        // no ProcessController, persisted preview state, or flight resource request.
+        public string PlannerUpdate(List<KeyValuePair<string, double>> resources,
+            CelestialBody body, Dictionary<string, double> environment)
+        {
+            if (!HighLogic.LoadedSceneIsEditor || powerController == null)
+                return "Quantum Relay";
+            double rate = 0.0;
+            switch (powerController.EditorPreviewMode)
+            {
+                case 0: rate = idlePowerRate; break;
+                case 1: rate = synchronizationPowerRate; break;
+                case 2: rate = operationalPowerRate; break;
+            }
+            if (rate > 0.0)
+                resources.Add(new KeyValuePair<string, double>("ElectricCharge", -rate));
+            return "Quantum Relay " + powerController.PreviewModeName;
+        }
+
+        private void RefreshEditorPowerPreview()
+        {
+            if (!HighLogic.LoadedSceneIsEditor)
+                return;
+
+            editorPowerPreviewStatus = powerController != null
+                ? powerController.EditorPreviewStatus : "Controller unavailable";
+            editorPowerModuleInventory = powerController != null
+                ? powerController.GetModuleInventory(part) : "Unavailable";
+            double selectedRate = 0.0;
+            if (powerController != null)
+            {
+                switch (powerController.EditorPreviewMode)
+                {
+                    case 0: selectedRate = idlePowerRate; break;
+                    case 1: selectedRate = synchronizationPowerRate; break;
+                    case 2: selectedRate = operationalPowerRate; break;
+                }
+            }
+            editorSelectedEcRate = selectedRate.ToString("0.00") + " EC/s";
+        }
+
         [KSPField(guiActive = true, guiName = "Operational")]
         public string operationalStatus = "NO";
 
@@ -71,8 +127,14 @@ namespace QuantumRelay
         [KSPField(guiActive = true, guiName = "Power Usage")]
         public string powerUsageStatus = "0.00 EC/s";
 
-        [KSPField(guiActive = true, guiName = "Status")]
+        [KSPField(guiActive = false, guiName = "Status")]
         public string connectionStatus = "Standby";
+
+        [KSPField(guiActive = true, guiName = "Connected Partner")]
+        public string connectedPartnerStatus = "No Partner Connected";
+
+        [KSPField(guiActive = true, guiName = "Quantum Signal")]
+        public string quantumSignalStatus = "Unavailable";
 
         [KSPField(guiActive = false, guiName = "Electric Charge")]
         public string powerStatus = "Unavailable";
@@ -326,7 +388,10 @@ namespace QuantumRelay
         public void PreviewStandbyPower()
         {
             if (HighLogic.LoadedSceneIsEditor && powerController != null)
+                {
                 powerController.SetEditorPreview(0);
+                RefreshEditorPowerPreview();
+            }
         }
 
         [KSPEvent(guiActive = false, guiActiveEditor = true,
@@ -334,7 +399,10 @@ namespace QuantumRelay
         public void PreviewSynchronizationPower()
         {
             if (HighLogic.LoadedSceneIsEditor && powerController != null)
+                {
                 powerController.SetEditorPreview(1);
+                RefreshEditorPowerPreview();
+            }
         }
 
         [KSPEvent(guiActive = false, guiActiveEditor = true,
@@ -342,7 +410,10 @@ namespace QuantumRelay
         public void PreviewOperationalPower()
         {
             if (HighLogic.LoadedSceneIsEditor && powerController != null)
+                {
                 powerController.SetEditorPreview(2);
+                RefreshEditorPowerPreview();
+            }
         }
 
         [KSPEvent(guiActive = false, guiActiveEditor = true,
@@ -350,7 +421,10 @@ namespace QuantumRelay
         public void StopPowerPreview()
         {
             if (HighLogic.LoadedSceneIsEditor && powerController != null)
+                {
                 powerController.SetEditorPreview(-1);
+                RefreshEditorPowerPreview();
+            }
         }
 
         [KSPEvent(
@@ -529,6 +603,7 @@ namespace QuantumRelay
             CheckForTransmissionPulse();
 
             UpdateDisplayFields();
+            RefreshEditorPowerPreview();
             UpdateEventVisibility();
 
             if (HighLogic.LoadedSceneIsFlight)
@@ -540,8 +615,26 @@ namespace QuantumRelay
             QuantumManager.Instance.UnregisterRelay(this);
         }
 
+        public void LateUpdate()
+        {
+            // Reassert after stock/mod Update methods rebuild PAW visibility.
+            if (powerController != null)
+                powerController.RefreshPowerInterface();
+        }
+
         public void Update()
         {
+            if (HighLogic.LoadedSceneIsEditor)
+            {
+                if (powerController != null && Time.time >= nextStatusRefreshTime)
+                {
+                    nextStatusRefreshTime = Time.time + 0.5f;
+                    powerController.ApplyEditorPreview();
+                    RefreshEditorPowerPreview();
+                }
+                return;
+            }
+
             if (!HighLogic.LoadedSceneIsFlight)
                 return;
 
@@ -1055,6 +1148,37 @@ namespace QuantumRelay
             relayModelStatus = relayModel;
             relayStatus =
                 RelayStateMachine.GetDisplayName(operationalState);
+            connectedPartnerStatus = "No Partner Connected";
+            quantumSignalStatus = "Unavailable";
+            try
+            {
+                Vessel ownVessel = part != null ? part.vessel : null;
+                if (ownVessel != null)
+                {
+                    foreach (NetworkTelemetry network in QuantumRelayRegistry.Networks)
+                    {
+                        if (network == null || !network.Online ||
+                            network.GatewayA == null || network.GatewayB == null)
+                            continue;
+                        GatewayTelemetry other = null;
+                        if (network.GatewayA.VesselId == ownVessel.id)
+                            other = network.GatewayB;
+                        else if (network.GatewayB.VesselId == ownVessel.id)
+                            other = network.GatewayA;
+                        if (other == null) continue;
+                        connectedPartnerStatus = other.VesselName ?? "Unknown";
+                        double strength = Math.Min(
+                            network.GatewayA.HasQuantumRelayModule ? network.GatewayA.RelaySignalStrength : 0.25,
+                            network.GatewayB.HasQuantumRelayModule ? network.GatewayB.RelaySignalStrength : 0.25);
+                        quantumSignalStatus = string.Format("{0:0.#}%", strength * 100.0);
+                        break;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning("[QuantumRelay] Partner PAW telemetry unavailable: " + ex.Message);
+            }
             bool partnerLinked = HasActiveQuantumLink();
             // Show actual communications availability, not hardware detection or
             // local quantum synchronization. A B-side relay without a route is

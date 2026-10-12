@@ -1,10 +1,10 @@
-﻿namespace QuantumRelay
+namespace QuantumRelay
 {
     /// <summary>Shared identifiers and defaults used throughout Quantum Relay.</summary>
     internal static class QuantumRelayConstants
     {
-        public const string Version = "1.2.0";
-        public const string DisplayVersion = "v1.02";
+        public const string Version = "1.3.0";
+        public const string DisplayVersion = "v1.03";
 
         public const int DefaultSignalQualityPercent = 100;
         public const double DefaultGatewayRadiusMetres = 250000.0;

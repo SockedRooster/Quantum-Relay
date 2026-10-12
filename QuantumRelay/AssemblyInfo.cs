@@ -12,5 +12,6 @@ using System.Runtime.InteropServices;
 [assembly: ComVisible(false)]
 [assembly: Guid("59779f18-4306-4f04-9822-d8adf2ef98b3")]
 [assembly: AssemblyVersion("1.2.0.0")]
-[assembly: AssemblyFileVersion("1.2.0.0")]
+[assembly: AssemblyFileVersion("1.3.0.0")]
+[assembly: AssemblyInformationalVersion("1.03")]
 [assembly: KSPAssembly("QuantumRelay", 1, 2)]

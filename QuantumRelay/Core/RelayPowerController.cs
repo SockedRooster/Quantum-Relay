@@ -25,12 +25,91 @@ namespace QuantumRelay
         private ModuleResourceConverter synchronizationConverter;
         private ModuleResourceConverter operationalConverter;
 
+        // Editor-only selection. Reasserted when another mod refreshes converter states.
+        private int editorPreviewMode = -1;
+        // Kerbalism ProcessController toggles, accessed without linking Kerbalism assemblies.
+        private bool kerbalismPlanner;
+
+        // Kerbalism's editor planner may sum INPUT_RESOURCE ratios even for
+        // deactivated converters. Keep original values so switching modes is
+        // reversible and never change flight converter definitions.
+        private readonly Dictionary<ModuleResourceConverter, double> editorBaseRates =
+            new Dictionary<ModuleResourceConverter, double>();
+
+        public string EditorPreviewStatus
+        {
+            get
+            {
+                if (kerbalismPlanner) return PreviewModeName + " (Kerbalism planner API)";
+                if (!UsesStockConverters)
+                    return PreviewModeName + " (no backend)";
+
+                string selected = editorPreviewMode == 0 ? "Standby" :
+                    editorPreviewMode == 1 ? "Synchronization" :
+                    editorPreviewMode == 2 ? "Operational" : "Off";
+                bool idle = idleConverter != null && idleConverter.IsActivated;
+                bool sync = synchronizationConverter != null && synchronizationConverter.IsActivated;
+                bool operational = operationalConverter != null && operationalConverter.IsActivated;
+                string active = operational ? "Operational" :
+                    sync ? "Synchronization" : idle ? "Standby" : "Off";
+                return selected + " (converter: " + active + ")";
+            }
+        }
+
+        public int EditorPreviewMode { get { return editorPreviewMode; } }
+
+        public string PreviewModeName
+        {
+            get { return editorPreviewMode == 0 ? "Standby" :
+                editorPreviewMode == 1 ? "Synchronization" :
+                editorPreviewMode == 2 ? "Operational" : "Off"; }
+        }
+
+        // Keep PAW diagnostics short. Full module list is emitted to KSP.log.
+        public string GetModuleInventory(Part part)
+        {
+            if (part == null || part.Modules == null)
+                return "No part";
+            int stock = 0;
+            int processes = 0;
+            foreach (PartModule module in part.Modules)
+            {
+                if (module == null) continue;
+                string name = module.moduleName ?? module.GetType().Name;
+                if (module is ModuleResourceConverter) stock++;
+                if (name.IndexOf("ProcessController", StringComparison.OrdinalIgnoreCase) >= 0)
+                    processes++;
+            }
+            return "Stock " + stock + " / Kerbalism " + processes;
+        }
+
+        private static string GetDetailedModuleInventory(Part part)
+        {
+            if (part == null || part.Modules == null) return "No modules";
+            var names = new List<string>();
+            foreach (PartModule module in part.Modules)
+            {
+                if (module == null) continue;
+                string name = module.moduleName ?? module.GetType().Name;
+                var converter = module as ModuleResourceConverter;
+                if (converter != null)
+                    name += " [" + (converter.ConverterName ?? "unnamed") + "]";
+                names.Add(name);
+            }
+            return string.Join(" | ", names.ToArray());
+        }
+
         public double CurrentRate { get; private set; }
         public bool HasPower { get; private set; } = true;
         public bool UsesStockConverters { get; private set; }
 
         public void Configure(Part part)
         {
+            editorBaseRates.Clear();
+            kerbalismPlanner = false;
+            foreach (var loaded in AssemblyLoader.loadedAssemblies)
+                if (loaded.assembly.GetType("KERBALISM.ProcessController") != null)
+                    kerbalismPlanner = true;
             idleConverter = null;
             synchronizationConverter = null;
             operationalConverter = null;
@@ -85,9 +164,17 @@ namespace QuantumRelay
             ConfigureConverterInterface(operationalConverter);
 
             StopAllConverters();
+            if (HighLogic.LoadedSceneIsEditor)
+            {
+                RememberEditorRate(idleConverter);
+                RememberEditorRate(synchronizationConverter);
+                RememberEditorRate(operationalConverter);
+                ApplyEditorPreview();
+            }
 
             if (!UsesStockConverters)
             {
+                Debug.LogWarning("[QuantumRelay] Loaded part modules: " + GetDetailedModuleInventory(part));
                 Debug.LogWarning(
                     "[QuantumRelay] Stock power converters were not found. " +
                     "Falling back to direct ElectricCharge consumption.");
@@ -101,13 +188,63 @@ namespace QuantumRelay
             if (!HighLogic.LoadedSceneIsEditor)
                 return;
 
-            StopAllConverters();
-            if (mode == 0)
+            int selected = mode >= 0 && mode <= 2 ? mode : -1;
+            if (selected == editorPreviewMode) return;
+            editorPreviewMode = selected;
+            ApplyEditorPreview();
+            if (EditorLogic.fetch != null && EditorLogic.fetch.ship != null)
+                GameEvents.onEditorShipModified.Fire(EditorLogic.fetch.ship);
+        }
+
+        public void ApplyEditorPreview()
+        {
+            if (!HighLogic.LoadedSceneIsEditor)
+                return;
+
+            RefreshPowerInterface();
+            // Kerbalism receives EC from PlannerUpdate; stock inputs must all
+            // be zero in the editor to avoid counting the same load twice.
+            SetEditorRate(idleConverter, !kerbalismPlanner && editorPreviewMode == 0);
+            SetEditorRate(synchronizationConverter, !kerbalismPlanner && editorPreviewMode == 1);
+            SetEditorRate(operationalConverter, !kerbalismPlanner && editorPreviewMode == 2);
+
+            // Do not repeatedly stop/start converters already in the desired state.
+            if (editorPreviewMode != 0) SetConverterActive(idleConverter, false);
+            if (editorPreviewMode != 1) SetConverterActive(synchronizationConverter, false);
+            if (editorPreviewMode != 2) SetConverterActive(operationalConverter, false);
+            if (editorPreviewMode == 0)
                 SetConverterActive(idleConverter, true);
-            else if (mode == 1)
+            else if (editorPreviewMode == 1)
                 SetConverterActive(synchronizationConverter, true);
-            else if (mode == 2)
+            else if (editorPreviewMode == 2)
                 SetConverterActive(operationalConverter, true);
+        }
+
+        private void RememberEditorRate(ModuleResourceConverter converter)
+        {
+            if (converter == null || converter.inputList == null) return;
+            foreach (ResourceRatio input in converter.inputList)
+            {
+                if (input.ResourceName == "ElectricCharge")
+                {
+                    editorBaseRates[converter] = input.Ratio;
+                    return;
+                }
+            }
+        }
+
+        private void SetEditorRate(ModuleResourceConverter converter, bool selected)
+        {
+            if (converter == null || converter.inputList == null) return;
+            double original;
+            if (!editorBaseRates.TryGetValue(converter, out original)) return;
+            for (int i = 0; i < converter.inputList.Count; i++)
+            {
+                ResourceRatio input = converter.inputList[i];
+                if (input.ResourceName != "ElectricCharge") continue;
+                input.Ratio = selected ? original : 0.0;
+                converter.inputList[i] = input;
+            }
         }
 
         public double GetRequiredRate(
@@ -285,6 +422,13 @@ namespace QuantumRelay
             }
         }
 
+        public void RefreshPowerInterface()
+        {
+            ConfigureConverterInterface(idleConverter);
+            ConfigureConverterInterface(synchronizationConverter);
+            ConfigureConverterInterface(operationalConverter);
+        }
+
         private static void ConfigureConverterInterface(
             ModuleResourceConverter converter)
         {
@@ -294,12 +438,13 @@ namespace QuantumRelay
             HideEvent(converter, "StartResourceConverter");
             HideEvent(converter, "StopResourceConverter");
             HideEvent(converter, "ToggleResourceConverter");
+            foreach (BaseAction action in converter.Actions) action.active = false;
 
             BaseField statusField = converter.Fields["status"];
             if (statusField != null)
             {
                 statusField.guiActive = false;
-                statusField.guiActiveEditor = true;
+                statusField.guiActiveEditor = false;
             }
         }
 
@@ -312,12 +457,11 @@ namespace QuantumRelay
             if (moduleEvent == null)
                 return;
 
-            // Expose stock converter controls in the VAB for Kerbalism
-            // simulation and quality configuration. Flight operation remains
-            // managed exclusively by RelayPowerController.
-            moduleEvent.active = true;
+            // Keep only Quantum Relay's own editor preview buttons visible.
+            // The stock converter events duplicate those controls.
+            moduleEvent.active = false;
             moduleEvent.guiActive = false;
-            moduleEvent.guiActiveEditor = true;
+            moduleEvent.guiActiveEditor = false;
         }
     }
 }

@@ -12,9 +12,9 @@
     <Description>Stable multi-tier quantum relay routing through Promised Worlds wormholes.</Description>
     <Copyright>Copyright © 2026 RoosterWorks</Copyright>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <Version>1.2.0</Version>
+    <Version>1.3.0</Version>
     <AssemblyVersion>1.2.0.0</AssemblyVersion>
-    <FileVersion>1.2.0.0</FileVersion>
+    <FileVersion>1.3.0.0</FileVersion>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <KSPRoot Condition=" '$(KSPRoot)' == '' ">D:\SteamLibrary\steamapps\common\Kerbal Space Program</KSPRoot>
@@ -37,6 +37,7 @@
     <Compile Include="Core/RelayStateMachine.cs" />
     <Compile Include="Core/RelaySynchronizationController.cs" />
     <Compile Include="GatewayScanner.cs" />
+    <Compile Include="GatewayDistance.cs" />
     <Compile Include="Managers/QuantumBridgeManager.cs" />
     <Compile Include="ModuleQuantumRelay.cs" />
     <Compile Include="Models/QuantumRoute.cs" />
@@ -51,12 +52,16 @@
     <Compile Include="QuantumRelayVisualController.cs" />
     <Compile Include="RelayVisualState.cs" />
     <Compile Include="QuantumRelayGui.cs" />
+    <Compile Include="QuantumRelayNetworkMap.cs" />
     <Compile Include="QuantumRelayInfo.cs" />
+    <Compile Include="QuantumRouteDetector.cs" />
+    <Compile Include="QuantumRelayFlightHud.cs" />
     <Compile Include="QuantumRelayMissionControl.cs" />
     <Compile Include="QuantumRelayNotifications.cs" />
     <Compile Include="QuantumRelayRegistry.cs" />
     <Compile Include="QuantumRelayRuntimeState.cs" />
     <Compile Include="QuantumRelaySettings.cs" />
+    <Compile Include="QuantumRelaySettingsNode.cs" />
     <Compile Include="RelayClass.cs" />
     <Compile Include="RelayDefinition.cs" />
     <Compile Include="ReflectorDetector.cs" />
@@ -69,28 +74,31 @@
     <Reference Include="UnityEngine"><HintPath>$(KSPManaged)\UnityEngine.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="UnityEngine.CoreModule"><HintPath>$(KSPManaged)\UnityEngine.CoreModule.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="UnityEngine.IMGUIModule"><HintPath>$(KSPManaged)\UnityEngine.IMGUIModule.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.TextRenderingModule"><HintPath>$(KSPManaged)\UnityEngine.TextRenderingModule.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.UI"><HintPath>$(KSPManaged)\UnityEngine.UI.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.UIModule"><HintPath>$(KSPManaged)\UnityEngine.UIModule.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="UnityEngine.AnimationModule"><HintPath>$(KSPManaged)\UnityEngine.AnimationModule.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="UnityEngine.AudioModule"><HintPath>$(KSPManaged)\UnityEngine.AudioModule.dll</HintPath><Private>false</Private></Reference>
   </ItemGroup>
-  <!-- Stage runtime assets inside this repository for packaging (not outside the repo). -->
-  <Target Name="CopyQuantumRelayParts" AfterTargets="Build">
+  <Target Name="CopyQuantumRelayDistribution" AfterTargets="Build">
     <ItemGroup>
+      <QuantumRelayAsset Include="$(MSBuildProjectDirectory)\..\Distribution\QuantumRelay\**\*" />
       <QuantumRelayPartCfg Include="$(MSBuildProjectDirectory)\Parts\*.cfg" />
     </ItemGroup>
-    <MakeDir Directories="$(MSBuildProjectDirectory)\..\GameData\QuantumRelay\Parts" />
+    <Copy SourceFiles="@(QuantumRelayAsset)"
+          DestinationFiles="@(QuantumRelayAsset->'$(MSBuildProjectDirectory)\..\GameData\QuantumRelay\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(QuantumRelayPartCfg)"
           DestinationFolder="$(MSBuildProjectDirectory)\..\GameData\QuantumRelay\Parts"
           SkipUnchangedFiles="true" />
-  </Target>
-  <Target Name="CopyQuantumRelayLicense" AfterTargets="Build">
     <Copy SourceFiles="$(MSBuildProjectDirectory)\..\LICENSE"
           DestinationFolder="$(MSBuildProjectDirectory)\..\GameData\QuantumRelay"
           SkipUnchangedFiles="true" />
   </Target>
   <Target Name="CopyQuantumRelaySounds" AfterTargets="Build">
-    <MakeDir Directories="$(MSBuildProjectDirectory)\..\GameData\QuantumRelay\Sounds" />
+    <MakeDir Directories="..\GameData\QuantumRelay\Sounds" />
     <Copy SourceFiles="Sounds\Activation.wav;Sounds\TransmissionPulse.ogg"
-          DestinationFolder="$(MSBuildProjectDirectory)\..\GameData\QuantumRelay\Sounds"
+          DestinationFolder="..\GameData\QuantumRelay\Sounds"
           SkipUnchangedFiles="true" />
   </Target>
 </Project>

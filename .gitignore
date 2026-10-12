@@ -16,3 +16,4 @@ Thumbs.db
 
 # Build-staged game content. Distributed separately as a GameData ZIP.
 /GameData/QuantumRelay/
+/artifacts/

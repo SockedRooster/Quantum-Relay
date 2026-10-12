@@ -18,6 +18,12 @@ namespace QuantumRelay
         public static bool AutoRebuildCommNet { get; private set; } = true;
         public static bool ShowScreenMessages { get; private set; } = true;
         public static bool DebugLogging { get; private set; }
+        public static bool ShowFlightHud { get; private set; } = true;
+        public static bool HudFollowStock { get; private set; } = true;
+        public static float HudX { get; private set; } = 270f;
+        public static float HudY { get; private set; } = 84f;
+        public static float UiScale { get; private set; } = 1f;
+        public static bool LastSaveSucceeded { get; private set; }
         public static float WindowX { get; private set; } = 260f;
         public static float WindowY { get; private set; } = 100f;
         public static float WindowWidth { get; private set; } = 560f;
@@ -61,9 +67,7 @@ namespace QuantumRelay
                 }
 
                 ConfigNode root = ConfigNode.Load(SettingsPath);
-                ConfigNode node = root != null && root.name == "QUANTUM_RELAY_SETTINGS"
-                    ? root
-                    : root?.GetNode("QUANTUM_RELAY_SETTINGS");
+                ConfigNode node = QuantumRelaySettingsNode.Find(root);
 
                 if (node == null)
                 {
@@ -84,6 +88,11 @@ namespace QuantumRelay
                 AutoRebuildCommNet = ReadBool(node, "autoRebuildCommNet", true);
                 ShowScreenMessages = ReadBool(node, "showScreenMessages", true);
                 DebugLogging = ReadBool(node, "debugLogging", false);
+                ShowFlightHud = ReadBool(node, "showFlightHud", true);
+                HudFollowStock = ReadBool(node, "hudFollowStock", true);
+                HudX = Math.Max(0f, ReadFloat(node, "hudX", 270f));
+                HudY = Math.Max(0f, ReadFloat(node, "hudY", 84f));
+                UiScale = Math.Max(0.75f, Math.Min(1.5f, ReadFloat(node, "uiScale", 1f)));
                 WindowX = ReadFloat(node, "windowX", 260f);
                 WindowY = ReadFloat(node, "windowY", 100f);
                 WindowWidth = Math.Max(
@@ -124,6 +133,11 @@ namespace QuantumRelay
             AutoRebuildCommNet = true;
             ShowScreenMessages = true;
             DebugLogging = false;
+            ShowFlightHud = true;
+            HudFollowStock = true;
+            HudX = 270f;
+            HudY = 84f;
+            UiScale = 1f;
             WindowX = 260f;
             WindowY = 100f;
             WindowWidth = 560f;
@@ -133,6 +147,7 @@ namespace QuantumRelay
 
         public static void Save()
         {
+            LastSaveSucceeded = false;
             try
             {
                 string directory = Path.GetDirectoryName(SettingsPath);
@@ -143,6 +158,11 @@ namespace QuantumRelay
                 node.AddValue("autoRebuildCommNet", AutoRebuildCommNet);
                 node.AddValue("showScreenMessages", ShowScreenMessages);
                 node.AddValue("debugLogging", DebugLogging);
+                node.AddValue("showFlightHud", ShowFlightHud);
+                node.AddValue("hudFollowStock", HudFollowStock);
+                node.AddValue("hudX", HudX.ToString("0.##", CultureInfo.InvariantCulture));
+                node.AddValue("hudY", HudY.ToString("0.##", CultureInfo.InvariantCulture));
+                node.AddValue("uiScale", UiScale.ToString("0.##", CultureInfo.InvariantCulture));
                 node.AddValue("windowX", WindowX.ToString("0.##", CultureInfo.InvariantCulture));
                 node.AddValue("windowY", WindowY.ToString("0.##", CultureInfo.InvariantCulture));
                 node.AddValue("windowWidth", WindowWidth.ToString("0.##", CultureInfo.InvariantCulture));
@@ -150,7 +170,8 @@ namespace QuantumRelay
 
                 ConfigNode root = new ConfigNode("QUANTUM_RELAY_CONFIG");
                 root.AddNode(node);
-                root.Save(SettingsPath);
+                if (!root.Save(SettingsPath)) throw new IOException("Settings file could not be written.");
+                LastSaveSucceeded = true;
             }
             catch (Exception ex)
             {
@@ -164,16 +185,30 @@ namespace QuantumRelay
             SaveWindowLayout(x, y, WindowWidth, WindowHeight);
         }
 
+        public static void ApplyDisplay(bool showHud, bool followStock, float hudX, float hudY, float uiScale)
+        {
+            ShowFlightHud = showHud;
+            HudFollowStock = followStock;
+            HudX = Math.Max(0f, Finite(hudX, 270f));
+            HudY = Math.Max(0f, Finite(hudY, 84f));
+            UiScale = Math.Max(0.75f, Math.Min(1.5f, Finite(uiScale, 1f)));
+        }
+
+        private static float Finite(float value, float fallback)
+        {
+            return float.IsNaN(value) || float.IsInfinity(value) ? fallback : value;
+        }
+
         public static void SaveWindowLayout(
             float x,
             float y,
             float width,
             float height)
         {
-            WindowX = Math.Max(0f, x);
-            WindowY = Math.Max(0f, y);
-            WindowWidth = Math.Max(460f, width);
-            WindowHeight = Math.Max(420f, height);
+            WindowX = Math.Max(0f, Finite(x, 260f));
+            WindowY = Math.Max(0f, Finite(y, 100f));
+            WindowWidth = Math.Max(460f, Finite(width, 560f));
+            WindowHeight = Math.Max(420f, Finite(height, 700f));
             Save();
         }
 
@@ -183,7 +218,7 @@ namespace QuantumRelay
         private static float ReadFloat(ConfigNode node, string key, float fallback)
         {
             float value;
-            return float.TryParse(node.GetValue(key), NumberStyles.Float, CultureInfo.InvariantCulture, out value) ? value : fallback;
+            return float.TryParse(node.GetValue(key), NumberStyles.Float, CultureInfo.InvariantCulture, out value) ? Finite(value, fallback) : fallback;
         }
 
         private static bool ReadBool(ConfigNode node, string key, bool fallback)

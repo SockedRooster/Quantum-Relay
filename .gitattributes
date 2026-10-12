@@ -1,0 +1,11 @@
+* text=auto
+*.cs text eol=lf
+*.csproj text eol=lf
+*.cfg text eol=lf
+*.md text eol=lf
+*.version text eol=lf
+*.ps1 text eol=lf
+*.png binary
+*.mu binary
+*.wav binary
+*.ogg binary

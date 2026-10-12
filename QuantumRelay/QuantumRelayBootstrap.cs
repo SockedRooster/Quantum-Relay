@@ -35,6 +35,8 @@ namespace QuantumRelay
         private double _lastMaintenanceUt;
         private bool _cacheDirty = true;
         private int _lastOnlineCount = -1;
+        private readonly Dictionary<string, bool> _previousLinkStates =
+            new Dictionary<string, bool>();
         private bool _quantumRelayEventsRegistered;
 
         public void Start()
@@ -673,6 +675,26 @@ namespace QuantumRelay
                         link != null &&
                         link.Online);
 
+            // Log each network transition independently; an unchanged total can
+            // still hide one network dropping while another comes online.
+            HashSet<string> observed = new HashSet<string>();
+            foreach (ActiveQuantumLink link in _links)
+            {
+                if (link == null) continue;
+                string id = string.IsNullOrEmpty(link.Id) ? link.SafeDisplayName : link.Id;
+                observed.Add(id);
+                bool previous;
+                if (_previousLinkStates.TryGetValue(id, out previous) && previous != link.Online)
+                {
+                    string detail = link.Online ? "ONLINE" : "OFFLINE";
+                    QuantumRelayNotifications.Post("link-" + id + "-" + detail,
+                        link.SafeDisplayName + " — " + detail, false);
+                }
+                _previousLinkStates[id] = link.Online;
+            }
+            foreach (string id in _previousLinkStates.Keys.ToArray())
+                if (!observed.Contains(id)) _previousLinkStates.Remove(id);
+
             if (onlineCount == _lastOnlineCount)
                 return;
 
@@ -713,6 +735,7 @@ namespace QuantumRelay
 
         private void LogCandidates(float realtime)
         {
+            if (!QuantumRelaySettings.DebugLogging) return;
             bool detailedLogDue =
                 realtime >=
                 _nextDetailedLogTime;

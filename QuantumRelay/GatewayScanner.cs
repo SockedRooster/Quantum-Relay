@@ -119,16 +119,8 @@ namespace QuantumRelay
                 {
                     double distance;
 
-                    try
-                    {
-                        distance = Vector3d.Distance(
-                            vessel.GetWorldPos3D(),
-                            wormhole.Body.position);
-                    }
-                    catch
-                    {
+                    if (!GatewayDistance.TryMeasure(vessel, wormhole.Body, out distance))
                         continue;
-                    }
 
                     if (distance >
                         QuantumRelaySettings.GatewayRadiusMetres)
@@ -164,16 +156,8 @@ namespace QuantumRelay
 
             double distance;
 
-            try
-            {
-                distance = Vector3d.Distance(
-                    vessel.GetWorldPos3D(),
-                    previous.Wormhole.Body.position);
-            }
-            catch
-            {
+            if (!GatewayDistance.TryMeasure(vessel, previous.Wormhole.Body, out distance))
                 return null;
-            }
 
             if (distance >
                 QuantumRelaySettings.GatewayRadiusMetres)
