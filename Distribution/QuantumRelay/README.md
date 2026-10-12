@@ -1,12 +1,14 @@
-# Quantum Relay v1.03
+# Quantum Relay v1.03.1
 
 Quantum Relay extends stock KSP CommNet through paired wormhole gateways. Includes the QR-100, QR-250, QR-500 and QR-750 deployable relays. Multiple quantum networks can operate simultaneously.
 
 ## Installation
 
-For an existing installation, exit KSP and replace only Plugins/QuantumRelay.dll. Keep existing PluginData settings. For a new installation, copy this QuantumRelay directory into KSP's GameData folder. Avoid duplicate installations.
+For an existing v1.03 installation, exit KSP and install the complete corrected QuantumRelay directory, including the four Parts configs. Replacing only the DLL will not fix the v1.03 packaging error. Keep personal Settings.cfg and customized QuantumBridges.cfg. For a new installation, copy this QuantumRelay directory into KSP's GameData folder. Avoid duplicate installations.
 
-This DLL was compiled against installed KSP assemblies. The maintainer reported the in-game acceptance checklist passed through v1.03V. Release compilation and 69 contract checks passed; the packaging agent did not independently run KSP. See RELEASE_NOTES_v1.03.md in the source archive. Kerbalism support is optional.
+QR hardware uses standalone RoosterWorks models/configs; Near Future Exploration is not required. ModuleManager supports bundled tech-tree/compatibility patches. Kerbalism is optional.
+
+The maintainer reported the in-game checklist passed through v1.03V. This hotfix corrects packaging of those standalone assets. Compilation, contract checks, and package checks ran; it was not independently tested in-game by the packaging agent. See RELEASE_NOTES_v1.03.1.md in the source archive.
 
 ## Source and releases
 

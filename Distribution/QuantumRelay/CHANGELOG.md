@@ -1,5 +1,12 @@
 # Quantum Relay Changelog
 
+## v1.03.1 — Standalone parts packaging correction
+- Removed the build target that overwrote standalone RoosterWorks parts with old NFE patches.
+- Distribution/QuantumRelay/Parts is the single source for packaged parts.
+- Added canonical part/model and archive checks, plus regression tests for incorrect assets.
+- Corrected dependency and upgrade instructions. Install the full corrected parts, not only the DLL.
+- Gameplay logic and standalone models/config values are unchanged.
+
 ## v1.03 — Stabilization and network console
 - Automatic VAB Kerbalism planner refresh and removal of duplicate flight preview consumption.
 - Cyan verified-route HUD and responsive network map with gateway details.

@@ -1,5 +1,11 @@
 # Quantum Relay v1.03
 
+> Packaging erratum: the published v1.03 GameData ZIP was confirmed to contain
+> legacy NFE patches instead of the standalone RoosterWorks parts. Its SHA256
+> matches the affected local artifact. Use the complete v1.03.1 correction;
+> see RELEASE_NOTES_v1.03.1.md. The earlier in-game validation refers to the
+> development builds, not independent testing of the incorrect public package.
+
 Release of the stabilization, HUD, network-map, and menu work tested through
 v1.03V. KSP 1.12.x; optional Kerbalism integration.
 
