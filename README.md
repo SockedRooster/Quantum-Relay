@@ -9,7 +9,7 @@ Quantum Relay provides quantum CommNet relay networks and wormhole connectivity 
 
 Download the **KSP installation ZIP** attached to the intended GitHub release. Install the `QuantumRelay` game folder under `<KSP>/GameData/`, so the plugin is at `<KSP>/GameData/QuantumRelay/Plugins/QuantumRelay.dll`. Back up saves before changing versions.
 
-The four QR-100/250/500/750 hardware configurations under `Distribution/QuantumRelay/Parts/` are standalone RoosterWorks parts using the supplied models. Near Future Exploration is not required. ModuleManager is needed for the bundled tech-tree and optional compatibility patches; Kerbalism is optional.
+The four QR-100/250/500/750 hardware configurations under `Distribution/QuantumRelay/Parts/` are standalone RoosterWorks parts using the supplied models. ModuleManager is needed for the bundled tech-tree and optional compatibility patches; Kerbalism is optional.
 
 **v1.03 packaging correction:** The published v1.03 ZIP contains older NFE part patches because a build target overwrote the standalone configs. Upgrade using the full v1.03.1 GameData ZIP, including all four Parts configs. Replacing only the DLL will not correct the parts. Preserve personal PluginData/Settings.cfg and customized QuantumBridges.cfg.
 
