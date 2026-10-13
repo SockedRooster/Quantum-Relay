@@ -43,6 +43,6 @@ not fix the erroneous part definitions. Keep existing personal Settings.cfg
 and customized QuantumBridges.cfg. Part IDs are unchanged. Avoid duplicate
 QuantumRelay installations.
 
-The QR models/parts are standalone and do not require Near Future Exploration.
+The QR models/parts are standalone.
 ModuleManager is needed for bundled tech-tree/compatibility patches; Kerbalism
 remains optional. The v1.03 tag is preserved rather than rewritten.
